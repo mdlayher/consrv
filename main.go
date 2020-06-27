@@ -65,8 +65,8 @@ func main() {
 		logf(s, "opened serial connection %q to %s", s.User(), device)
 
 		var eg errgroup.Group
-		eg.Go(copy(port, s))
-		eg.Go(copy(s, port))
+		eg.Go(eofCopy(port, s))
+		eg.Go(eofCopy(s, port))
 
 		if err := eg.Wait(); err != nil {
 			log.Printf("error proxying SSH/serial for %s: %v", s.RemoteAddr(), err)
@@ -122,9 +122,9 @@ func newSSHServer(addr, hostKey, authorizedKeys string) (*ssh.Server, error) {
 	return srv, nil
 }
 
-// copy is like io.Copy but it consumes io.EOF errors and is specialized for
+// eofCopy is like io.Copy but it consumes io.EOF errors and is specialized for
 // errgroup use.
-func copy(w io.Writer, r io.Reader) func() error {
+func eofCopy(w io.Writer, r io.Reader) func() error {
 	return func() error {
 		if _, err := io.Copy(w, r); err != nil && !errors.Is(err, io.EOF) {
 			return err
