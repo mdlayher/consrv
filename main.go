@@ -10,6 +10,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/gliderlabs/ssh"
 	"github.com/tarm/serial"
@@ -30,21 +31,20 @@ import (
 
 func main() {
 	// TODO: parse from config file, open serial console on demand.
-	const device = "/dev/ttyUSB0"
-	hosts := map[string]string{
-		"server": device,
-	}
-
 	// Open the serial port device.
-
-	port, err := serial.OpenPort(&serial.Config{
-		Name: device,
-		Baud: 115200,
-	})
-	if err != nil {
-		log.Fatalf("failed to open serial port: %v", err)
+	openSerial := func(name string) openFunc {
+		return func() (io.ReadWriteCloser, error) {
+			return serial.OpenPort(&serial.Config{
+				Name: name,
+				Baud: 115200,
+			})
+		}
 	}
-	defer port.Close()
+
+	dm := newDeviceMap(map[string]openFunc{
+		"server":  openSerial("/dev/ttyUSB0"),
+		"desktop": openSerial("/dev/ttyUSB1"),
+	})
 
 	// Start the SSH server and configure the handler.
 	srv, err := newSSHServer(":2222", "/perm/consrv/host_key", "/perm/consrv/authorized_keys")
@@ -54,15 +54,22 @@ func main() {
 
 	srv.Handle(func(s ssh.Session) {
 		// Use usernames to map to valid serial devices.
-		if _, ok := hosts[s.User()]; !ok {
-			logf(s, "invalid connection %q, closing connection", s.User())
+		port, err := dm.Open(s.User())
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				logf(s, "invalid connection %q, closing connection", s.User())
+			} else {
+				logf(s, "failed to open connection %q: %v", s.User(), err)
+			}
+
 			_ = s.Exit(1)
 			return
 		}
+		defer port.Close()
 
 		// Begin proxying between SSH and serial console until the SSH
 		// connection closes or is broken.
-		logf(s, "opened serial connection %q to %s", s.User(), device)
+		logf(s, "opened serial connection %q", s.User())
 
 		var eg errgroup.Group
 		eg.Go(eofCopy(port, s))
@@ -73,12 +80,49 @@ func main() {
 		}
 		_ = s.Close()
 
-		log.Printf("%s: closed connection %q to %s", s.RemoteAddr(), s.User(), device)
+		log.Printf("%s: closed serial connection %q", s.RemoteAddr(), s.User())
 	})
 
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("failed to serve SSH: %v", err)
 	}
+}
+
+type openFunc func() (io.ReadWriteCloser, error)
+
+type deviceMap struct {
+	mu   sync.Mutex
+	m    map[string]openFunc
+	prev map[string]io.Closer
+}
+
+func newDeviceMap(m map[string]openFunc) *deviceMap {
+	return &deviceMap{
+		m:    m,
+		prev: make(map[string]io.Closer),
+	}
+}
+
+func (dm *deviceMap) Open(user string) (io.ReadWriteCloser, error) {
+	dm.mu.Lock()
+	defer dm.mu.Unlock()
+
+	fn, ok := dm.m[user]
+	if !ok {
+		return nil, os.ErrNotExist
+	}
+
+	rwc, err := fn()
+	if err != nil {
+		return nil, err
+	}
+
+	if c, ok := dm.prev[user]; ok {
+		_ = c.Close()
+	}
+	dm.prev[user] = rwc
+
+	return rwc, nil
 }
 
 // logf outputs a formatted log message to both stderr and an SSH client.
