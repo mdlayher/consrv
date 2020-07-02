@@ -3,13 +3,11 @@
 package main
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"io"
 	"log"
 	"os"
-	"strings"
 
 	"github.com/gliderlabs/ssh"
 	gossh "golang.org/x/crypto/ssh"
@@ -20,22 +18,37 @@ import (
 //
 // TODO:
 //  - Prometheus metrics
-//  - support for multiple serial devices with different usernames
 //  - remove hardcoded devices/paths for non-gokrazy machines
-//  - separate users log into separate serial ports
 //  - capture and inspect/alert on kernel panics
 //  - magic sysrq support
 //  - signal handler to block until all connections close?
 
 func main() {
-	// TODO: parse from config file.
-	dm := newDeviceMap(map[string]openFunc{
-		"server":  openSerial("/dev/ttyUSB0", 115200),
-		"desktop": openSerial("/dev/ttyUSB1", 115200),
-	})
+	f, err := os.Open("/perm/consrv/consrv.toml")
+	if err != nil {
+		log.Fatalf("failed to open config file: %v", err)
+	}
+	defer f.Close()
+
+	cfg, err := parseConfig(f)
+	if err != nil {
+		log.Fatalf("failed to parse config: %v", err)
+	}
+	_ = f.Close()
+
+	// Create device mappings from the configuration file.
+	devices := make(map[string]openFunc, len(cfg.Devices))
+	for _, d := range cfg.Devices {
+		log.Printf("added device %q: %s (%d baud)", d.Name, d.Device, d.Baud)
+		devices[d.Name] = openSerial(d.Device, d.Baud)
+	}
+
+	dm := newDeviceMap(devices)
 
 	// Start the SSH server and configure the handler.
-	srv, err := newSSHServer(":2222", "/perm/consrv/host_key", "/perm/consrv/authorized_keys")
+	// TODO: make configurable.
+	const addr = ":2222"
+	srv, err := newSSHServer(addr, "/perm/consrv/host_key", cfg.Identities)
 	if err != nil {
 		log.Fatalf("failed to create SSH server: %v", err)
 	}
@@ -74,6 +87,7 @@ func main() {
 		log.Printf("%s: closed serial connection %q to %s", s.RemoteAddr(), s.User(), dev.String())
 	})
 
+	log.Printf("starting SSH server on %q", addr)
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("failed to serve SSH: %v", err)
 	}
@@ -88,21 +102,16 @@ func logf(s ssh.Session, format string, v ...interface{}) {
 
 // newSSHServer creates an SSH server which will bind to the specified address
 // and use the input host key and authorized key files.
-func newSSHServer(addr, hostKey, authorizedKeys string) (*ssh.Server, error) {
-	auth, err := os.Open(authorizedKeys)
-	if err != nil {
-		log.Fatalf("failed to open authorized keys file, err: %v", err)
-	}
-	defer auth.Close()
-
-	authorized, err := parseAuthorizedKeys(auth)
-	if err != nil {
-		log.Fatalf("failed to parse authorized keys: %v", err)
-	}
-	_ = auth.Close()
-
+func newSSHServer(addr, hostKey string, ids []identity) (*ssh.Server, error) {
 	srv := &ssh.Server{Addr: addr}
 	srv.SetOption(ssh.HostKeyFile(hostKey))
+
+	authorized := make(map[string]struct{})
+	for _, id := range ids {
+		f := gossh.FingerprintSHA256(id.PublicKey)
+		log.Printf("added identity %q: %s", id.Name, f)
+		authorized[f] = struct{}{}
+	}
 
 	srv.SetOption(ssh.PublicKeyAuth(func(ctx ssh.Context, key ssh.PublicKey) bool {
 		// Is this client's key authorized for access?
@@ -130,27 +139,4 @@ func eofCopy(w io.Writer, r io.Reader) func() error {
 
 		return nil
 	}
-}
-
-// parseAuthorizedKeys consumes an input stream and parses a set of all
-// authorized keys for SSH access.
-func parseAuthorizedKeys(r io.Reader) (map[string]struct{}, error) {
-	authorized := make(map[string]struct{})
-	s := bufio.NewScanner(r)
-	for s.Scan() {
-		line := strings.TrimSpace(s.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			// Skip empty lines and comments.
-			continue
-		}
-
-		key, _, _, _, err := ssh.ParseAuthorizedKey(s.Bytes())
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse %q: %v", line, err)
-		}
-
-		authorized[gossh.FingerprintSHA256(key)] = struct{}{}
-	}
-
-	return authorized, nil
 }
