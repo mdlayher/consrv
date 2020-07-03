@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"io"
 	"sync"
@@ -28,10 +27,9 @@ func newMux(r io.Reader) *mux {
 	m.eg.Go(func() error {
 		// Read continuously from the device and pass any data and/or errors to
 		// each of the attached clients.
-		br := bufio.NewReader(r)
 		b := make([]byte, 8192)
 		for {
-			n, err := br.Read(b)
+			n, err := r.Read(b)
 			if err == io.EOF {
 				// TODO: is this right, handle other errors?
 				return nil
@@ -53,11 +51,10 @@ type client struct {
 	ctx   context.Context
 }
 
-// A read is the result of a read operation. Clients _must_ only read from the
-// buffer to avoid data races.
+// A read is the result of a read operation. The buffer is shared among multiple
+// clients, so clients _must_ only read from the buffer to avoid data races.
 type read struct {
 	b   []byte
-	n   int
 	err error
 }
 
@@ -66,6 +63,11 @@ type read struct {
 func (m *mux) doRead(b []byte, n int, err error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	// Make a copy of the reader buffer to dispatch the copy to each client
+	// before returning, so the reader can reuse the space.
+	buf := make([]byte, n)
+	copy(buf, b[:n])
 
 	// remove detaches a given client when its context is canceled.
 	// Note that it is legal to modify a map during iteration in Go.
@@ -89,7 +91,7 @@ func (m *mux) doRead(b []byte, n int, err error) {
 		case <-c.ctx.Done():
 			// Client no longer listening.
 			remove(id)
-		case c.readC <- read{b: b, n: n, err: err}:
+		case c.readC <- read{b: buf, err: err}:
 			// Client is ready to consume the read.
 		}
 	}
@@ -133,7 +135,7 @@ func (mr *muxReader) Read(b []byte) (int, error) {
 		return 0, io.EOF
 	case r := <-mr.readC:
 		// Return any read data and errors.
-		n := copy(b, r.b[:r.n])
+		n := copy(b, r.b)
 		return n, r.err
 	}
 }
