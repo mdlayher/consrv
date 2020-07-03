@@ -3,7 +3,6 @@ package main
 import (
 	"io"
 	"os"
-	"sync"
 
 	"github.com/tarm/serial"
 )
@@ -78,8 +77,7 @@ func openSerial(name string, baud int) openFunc {
 
 // A deviceMap maps SSH usernames to muxDevices.
 type deviceMap struct {
-	mu sync.Mutex
-	m  map[string]*muxDevice
+	m map[string]*muxDevice
 }
 
 // newDeviceMap creates a deviceMap from the input device mappings.

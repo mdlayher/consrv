@@ -12,9 +12,7 @@ import (
 // A mux is a multiplexer over an input io.Reader which provides identical
 // output to any attached muxReaders.
 type mux struct {
-	mu sync.Mutex
-	br *bufio.Reader
-
+	mu      sync.Mutex
 	id      int
 	clients map[int]client
 
