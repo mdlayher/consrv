@@ -20,9 +20,7 @@ type mux struct {
 
 // newMux creates a mux over the input io.Reader.
 func newMux(r io.Reader) *mux {
-	m := &mux{
-		clients: make(map[int]client),
-	}
+	m := &mux{clients: make(map[int]client)}
 
 	m.eg.Go(func() error {
 		// Read continuously from the device and pass any data and/or errors to
@@ -30,12 +28,17 @@ func newMux(r io.Reader) *mux {
 		b := make([]byte, 8192)
 		for {
 			n, err := r.Read(b)
-			if err == io.EOF {
+			if err == io.EOF || err == io.ErrClosedPipe {
 				// TODO: is this right, handle other errors?
 				return nil
 			}
 
 			m.doRead(b, n, err)
+			if err != nil {
+				// Further reads won't make any progress, so don't block Close
+				// when it's invoked.
+				return err
+			}
 		}
 	})
 
