@@ -3,12 +3,14 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"log"
 	"os"
 
+	"github.com/dolmen-go/contextio"
 	"github.com/gliderlabs/ssh"
 	gossh "golang.org/x/crypto/ssh"
 	"golang.org/x/sync/errgroup"
@@ -43,7 +45,11 @@ func main() {
 		devices[d.Name] = openSerial(d.Device, d.Baud)
 	}
 
-	dm := newDeviceMap(devices)
+	// Open serial devices for the duration of the program run.
+	dm, err := newDeviceMap(devices)
+	if err != nil {
+		log.Fatalf("failed to open devices: %v", err)
+	}
 
 	// Start the SSH server and configure the handler.
 	// TODO: make configurable.
@@ -54,9 +60,8 @@ func main() {
 	}
 
 	srv.Handle(func(s ssh.Session) {
-		// Use usernames to map to valid serial devices, and ensure exclusive
-		// access to a given serial device.
-		dev, err := dm.Open(s)
+		// Use usernames to map to valid device multiplexers.
+		mux, err := dm.Open(s.User())
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				// No such connection.
@@ -68,23 +73,29 @@ func main() {
 			_ = s.Exit(1)
 			return
 		}
-		defer dev.Close()
 
-		// Begin proxying between SSH and serial console until the SSH
+		// Begin proxying between SSH and serial console mux until the SSH
 		// connection closes or is broken.
-		logf(s, "opened serial connection %q to %s", s.User(), dev.String())
+		logf(s, "opened serial connection %q to %s", s.User(), mux.String())
+
+		ctx, cancel := context.WithCancel(s.Context())
+		defer cancel()
+
+		// Create a new io.Reader handle from the mux for this client, so it
+		// will receive the same output as other clients for the duration of its
+		// session.
+		r := mux.m.Attach(ctx)
 
 		var eg errgroup.Group
-		eg.Go(eofCopy(dev, s))
-		eg.Go(eofCopy(s, dev))
+		eg.Go(eofCopy(ctx, mux, s))
+		eg.Go(eofCopy(ctx, s, r))
 
 		if err := eg.Wait(); err != nil {
 			log.Printf("error proxying SSH/serial for %s: %v", s.RemoteAddr(), err)
 		}
 
-		// TODO: tidy up open sessions map based on user/source address
 		_ = s.Exit(0)
-		log.Printf("%s: closed serial connection %q to %s", s.RemoteAddr(), s.User(), dev.String())
+		log.Printf("%s: closed serial connection %q to %s", s.RemoteAddr(), s.User(), mux.String())
 	})
 
 	log.Printf("starting SSH server on %q", addr)
@@ -129,11 +140,15 @@ func newSSHServer(addr, hostKey string, ids []identity) (*ssh.Server, error) {
 	return srv, nil
 }
 
-// eofCopy is like io.Copy but it consumes io.EOF errors and is specialized for
-// errgroup use.
-func eofCopy(w io.Writer, r io.Reader) func() error {
+// eofCopy is a context-aware io.Copy that consumes io.EOF errors and is
+// specialized for errgroup use.
+func eofCopy(ctx context.Context, w io.Writer, r io.Reader) func() error {
 	return func() error {
-		if _, err := io.Copy(w, r); err != nil && !errors.Is(err, io.EOF) {
+		_, err := io.Copy(
+			contextio.NewWriter(ctx, w),
+			contextio.NewReader(ctx, r),
+		)
+		if err != nil && !errors.Is(err, io.EOF) {
 			return err
 		}
 

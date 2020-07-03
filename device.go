@@ -5,7 +5,6 @@ import (
 	"os"
 	"sync"
 
-	"github.com/gliderlabs/ssh"
 	"github.com/tarm/serial"
 )
 
@@ -26,6 +25,35 @@ type serialDevice struct {
 
 // String returns the string representation of a serialDevice.
 func (d *serialDevice) String() string { return d.device }
+
+// A muxDevice is a device with multiplexed reads.
+type muxDevice struct {
+	m *mux
+	device
+}
+
+// newMuxDevice wraps a device with a mux.
+func newMuxDevice(d device) *muxDevice {
+	return &muxDevice{
+		m:      newMux(d),
+		device: d,
+	}
+}
+
+// Close cleans up the device and mux.
+func (d *muxDevice) Close() error {
+	err1 := d.device.Close()
+	err2 := d.m.Close()
+
+	if err1 != nil {
+		return err1
+	}
+	if err2 != nil {
+		return err2
+	}
+
+	return nil
+}
 
 // An openFunc is a function which opens a preconfigured device.
 type openFunc func() (device, error)
@@ -48,59 +76,36 @@ func openSerial(name string, baud int) openFunc {
 	}
 }
 
-// A deviceMap looks up functions to open configured devices given an input
-// SSH session's parameters.
+// A deviceMap maps SSH usernames to muxDevices.
 type deviceMap struct {
-	mu   sync.Mutex
-	m    map[string]openFunc
-	open map[string]session
-}
-
-// A session stores information about an open SSH session.
-type session struct {
-	s   ssh.Session
-	dev io.Closer
+	mu sync.Mutex
+	m  map[string]*muxDevice
 }
 
 // newDeviceMap creates a deviceMap from the input device mappings.
-func newDeviceMap(m map[string]openFunc) *deviceMap {
-	return &deviceMap{
-		m:    m,
-		open: make(map[string]session),
+func newDeviceMap(mapping map[string]openFunc) (*deviceMap, error) {
+	dm := &deviceMap{
+		m: make(map[string]*muxDevice, len(mapping)),
 	}
+
+	for dev, fn := range mapping {
+		d, err := fn()
+		if err != nil {
+			return nil, err
+		}
+
+		dm.m[dev] = newMuxDevice(d)
+	}
+
+	return dm, nil
 }
 
-// Open attempts to open a connection to a device using parameters from an SSH
-// session, ensuring the device exists and providing exclusive control of the
-// device to a new client.
-func (dm *deviceMap) Open(s ssh.Session) (device, error) {
-	dm.mu.Lock()
-	defer dm.mu.Unlock()
-
-	fn, ok := dm.m[s.User()]
+// Open determines if a device exists given an input username.
+func (dm *deviceMap) Open(user string) (*muxDevice, error) {
+	mux, ok := dm.m[user]
 	if !ok {
 		return nil, os.ErrNotExist
 	}
 
-	if ps, ok := dm.open[s.User()]; ok {
-		// There was a previous session open, warn that client that their
-		// session will be terminated and note that a session was terminated to
-		// the new client and logging.
-		logf(ps.s, "terminating, new connection opened for %q from client %s", s.User(), s.RemoteAddr())
-		_ = ps.s.Exit(1)
-		logf(s, "terminated open connection for %q from client %s", s.User(), ps.s.RemoteAddr())
-	}
-
-	// Okay, ready to open the device and create a new session for it.
-	d, err := fn()
-	if err != nil {
-		return nil, err
-	}
-
-	dm.open[s.User()] = session{
-		s:   s,
-		dev: d,
-	}
-
-	return d, nil
+	return mux, nil
 }
