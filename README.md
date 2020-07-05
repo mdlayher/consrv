@@ -1,4 +1,78 @@
 # consrv [![Linux Test Status](https://github.com/mdlayher/consrv/workflows/Linux%20Test/badge.svg)](https://github.com/mdlayher/consrv/actions) [![GoDoc](https://godoc.org/github.com/mdlayher/consrv?status.svg)](https://godoc.org/github.com/mdlayher/consrv) [![Go Report Card](https://goreportcard.com/badge/github.com/mdlayher/consrv)](https://goreportcard.com/report/github.com/mdlayher/consrv)
 
 Command `consrv` is a basic SSH to serial console bridge server for gokrazy.org
-appliances.
+appliances. MIT Licensed.
+
+# Overview
+
+SSH can be used to conveniently access remote machines over the network, but
+only if the machine has functional networking.
+
+Serial consoles can be used to remotely access a machine with broken or no
+networking, but often require running a cable from another machine to remotely
+rescue a machine.
+
+`consrv` combines the best of both worlds: an SSH interface running on a
+Raspberry Pi which can provide serial console access to one or more remote
+machines, all secured by an SSH channel. I (Matt Layher) run `consrv` on two
+Raspberry Pi 4s using gokrazy.org to act as remote serial console devices for
+my headless machines.
+
+```text
+-- Ethernet --> [Raspberry Pi + consrv]
+                  |-- USB to serial --> [desktop]
+                  |-- USB to serial --> [router]
+                  |-- USB to serial --> [server]
+```
+
+# Setup
+
+After formatting and mounting `/perm` on a gokrazy device, create the following
+files:
+
+- `/perm/consrv/host_key`: an OpenSSH format private key for the host (generate
+  using `ssh-keygen`, I recommend `ssh-keygen -t ed25519`)
+- `/perm/consrv/consrv.toml`: the configuration file for `consrv`:
+
+The TOML configuration file should have device entries for each serial device,
+and SSH public key identities which can be used to access the devices. Password
+authentication is not supported. For example:
+
+```toml
+# Configure one or more USB to serial devices with friendly names which are used
+# as the SSH username to access a device's serial console.
+[[devices]]
+name = "server"
+device = "/dev/ttyUSB0"
+baud = 115200
+
+[[devices]]
+name = "desktop"
+device = "/dev/ttyUSB1"
+baud = 115200
+
+# Configure one or more SSH public key identities which can authenticate against
+# consrv to access the devices.
+[[identities]]
+name = "mdlayher"
+public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIN5i5d0mRKAf02m+ju+I1KrAYw3Ny2IHXy88mgyragBN Matt Layher (mdlayher@gmail.com)"
+```
+
+Now you can log in to either device's serial console over SSH using port 2222 on
+the gokrazy device. When you're ready to end your session, use the SSH escape
+`ENTER ~ .` to break the connection:
+
+```text
+$ ssh -i ~/.ssh/mdlayher_ed25519 -p 2222 server@monitnerr-1
+consrv> opened serial connection "server" to /dev/ttyUSB0
+
+servnerr-3 login: matt
+Password:
+
+[matt@servnerr-3:~]$ w
+ 19:49:16 up 8 days,  1:01,  1 user,  load average: 0.12, 0.06, 0.02
+USER     TTY        LOGIN@   IDLE   JCPU   PCPU WHAT
+matt     ttyS0     19:49    4.00s  0.03s  0.00s w
+
+[matt@servnerr-3:~]$ Shared connection to monitnerr-1 closed.
+```
