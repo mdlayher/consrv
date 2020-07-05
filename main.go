@@ -83,6 +83,7 @@ func main() {
 		mux, ok := devices[s.User()]
 		if !ok {
 			// No such connection.
+			mm.deviceUnknownSessions()
 			logf(s, "exiting, unknown connection %q", s.User())
 			_ = s.Exit(1)
 			return

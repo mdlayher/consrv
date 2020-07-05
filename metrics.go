@@ -11,8 +11,9 @@ type metrics struct {
 	// Atomics must come first.
 	sessions int32
 
-	deviceInfo     metricslite.Gauge
-	deviceSessions metricslite.Gauge
+	deviceInfo            metricslite.Gauge
+	deviceSessions        metricslite.Gauge
+	deviceUnknownSessions metricslite.Counter
 }
 
 func newMetrics(m metricslite.Interface) *metrics {
@@ -27,6 +28,11 @@ func newMetrics(m metricslite.Interface) *metrics {
 			"consrv_device_sessions",
 			"The number of active SSH sessions connected to a serial console device.",
 			"name",
+		),
+
+		deviceUnknownSessions: m.Counter(
+			"consrv_device_unknown_sessions_total",
+			"The total number of SSH sessions which attempted to open a non-existent device.",
 		),
 	}
 }
