@@ -53,19 +53,14 @@ func main() {
 		prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}),
 	)
 
-	mm := metricslite.NewPrometheus(reg)
-	deviceInfo := mm.Gauge(
-		"consrv_device_info",
-		"Information metrics about each configured serial console device.",
-		"name", "device", "baud",
-	)
+	mm := newMetrics(metricslite.NewPrometheus(reg))
 
 	// Create device mappings from the configuration file.
 	devices := make(map[string]openFunc, len(cfg.Devices))
 	for _, d := range cfg.Devices {
 		log.Printf("added device %q: %s (%d baud)", d.Name, d.Device, d.Baud)
 		devices[d.Name] = openSerial(d.Device, d.Baud)
-		deviceInfo(1.0, d.Name, d.Device, strconv.Itoa(d.Baud))
+		mm.deviceInfo(1.0, d.Name, d.Device, strconv.Itoa(d.Baud))
 	}
 
 	// Open serial devices for the duration of the program run.
@@ -96,6 +91,9 @@ func main() {
 			_ = s.Exit(1)
 			return
 		}
+
+		done := mm.newSession(s.User())
+		defer done()
 
 		// Begin proxying between SSH and serial console mux until the SSH
 		// connection closes or is broken.
