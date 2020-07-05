@@ -3,10 +3,7 @@
 package main
 
 import (
-	"context"
-	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"net/http/pprof"
@@ -14,12 +11,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/dolmen-go/contextio"
-	"github.com/gliderlabs/ssh"
 	"github.com/mdlayher/metricslite"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	gossh "golang.org/x/crypto/ssh"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -73,54 +67,16 @@ func main() {
 	// Start the SSH server and configure the handler.
 	// TODO: make configurable.
 	const sshAddr = ":2222"
-	srv, err := newSSHServer(sshAddr, "/perm/consrv/host_key", cfg.Identities)
+	srv, err := newSSHServer(sshAddr, "/perm/consrv/host_key", devices, cfg.Identities, mm)
 	if err != nil {
 		log.Fatalf("failed to create SSH server: %v", err)
 	}
-
-	srv.Handle(func(s ssh.Session) {
-		// Use usernames to map to valid device multiplexers.
-		mux, ok := devices[s.User()]
-		if !ok {
-			// No such connection.
-			mm.deviceUnknownSessions()
-			logf(s, "exiting, unknown connection %q", s.User())
-			_ = s.Exit(1)
-			return
-		}
-
-		done := mm.newSession(s.User())
-		defer done()
-
-		// Begin proxying between SSH and serial console mux until the SSH
-		// connection closes or is broken.
-		logf(s, "opened serial connection %q to %s", s.User(), mux.String())
-
-		ctx, cancel := context.WithCancel(s.Context())
-		defer cancel()
-
-		// Create a new io.Reader handle from the mux for this client, so it
-		// will receive the same output as other clients for the duration of its
-		// session.
-		r := mux.m.Attach(ctx)
-
-		var eg errgroup.Group
-		eg.Go(eofCopy(ctx, mux, s))
-		eg.Go(eofCopy(ctx, s, r))
-
-		if err := eg.Wait(); err != nil {
-			log.Printf("error proxying SSH/serial for %s: %v", s.RemoteAddr(), err)
-		}
-
-		_ = s.Exit(0)
-		log.Printf("%s: closed serial connection %q to %s", s.RemoteAddr(), s.User(), mux.String())
-	})
 
 	var eg errgroup.Group
 
 	eg.Go(func() error {
 		log.Printf("starting SSH server on %q", sshAddr)
-		if err := srv.ListenAndServe(); err != nil {
+		if err := srv.Serve(); err != nil {
 			return fmt.Errorf("failed to serve SSH: %v", err)
 		}
 
@@ -161,57 +117,5 @@ func main() {
 
 	if err := eg.Wait(); err != nil {
 		log.Fatalf("failed to run: %v", err)
-	}
-}
-
-// logf outputs a formatted log message to both stderr and an SSH client.
-func logf(s ssh.Session, format string, v ...interface{}) {
-	msg := fmt.Sprintf(format, v...)
-	log.Printf("%s: %s", s.RemoteAddr(), msg)
-	fmt.Fprintf(s, "consrv> %s\n", msg)
-}
-
-// newSSHServer creates an SSH server which will bind to the specified address
-// and use the input host key and authorized key files.
-func newSSHServer(addr, hostKey string, ids []identity) (*ssh.Server, error) {
-	srv := &ssh.Server{Addr: addr}
-	srv.SetOption(ssh.HostKeyFile(hostKey))
-
-	authorized := make(map[string]struct{})
-	for _, id := range ids {
-		f := gossh.FingerprintSHA256(id.PublicKey)
-		log.Printf("added identity %q: %s", id.Name, f)
-		authorized[f] = struct{}{}
-	}
-
-	srv.SetOption(ssh.PublicKeyAuth(func(ctx ssh.Context, key ssh.PublicKey) bool {
-		// Is this client's key authorized for access?
-		_, ok := authorized[gossh.FingerprintSHA256(key)]
-
-		action := "rejected"
-		if ok {
-			action = "accepted"
-		}
-
-		log.Printf("%s: %s public key authentication for %s", ctx.RemoteAddr(), action, gossh.FingerprintSHA256(key))
-		return ok
-	}))
-
-	return srv, nil
-}
-
-// eofCopy is a context-aware io.Copy that consumes io.EOF errors and is
-// specialized for errgroup use.
-func eofCopy(ctx context.Context, w io.Writer, r io.Reader) func() error {
-	return func() error {
-		_, err := io.Copy(
-			contextio.NewWriter(ctx, w),
-			contextio.NewReader(ctx, r),
-		)
-		if err != nil && !errors.Is(err, io.EOF) {
-			return err
-		}
-
-		return nil
 	}
 }
