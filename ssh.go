@@ -56,11 +56,14 @@ func (s *sshServer) pubkeyAuth(ctx ssh.Context, key ssh.PublicKey) bool {
 	// Is this client's key authorized for access?
 	_, ok := s.authorized[gossh.FingerprintSHA256(key)]
 
-	action := "rejected"
+	var action string
 	if ok {
 		action = "accepted"
+	} else {
+		action = "rejected"
 	}
 
+	s.mm.deviceAuthentications(action)
 	log.Printf("%s: %s public key authentication for %s", ctx.RemoteAddr(), action, gossh.FingerprintSHA256(key))
 	return ok
 }

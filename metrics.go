@@ -12,6 +12,7 @@ type metrics struct {
 	sessions int32
 
 	deviceInfo            metricslite.Gauge
+	deviceAuthentications metricslite.Counter
 	deviceSessions        metricslite.Gauge
 	deviceUnknownSessions metricslite.Counter
 }
@@ -22,6 +23,12 @@ func newMetrics(m metricslite.Interface) *metrics {
 			"consrv_device_info",
 			"Information metrics about each configured serial console device.",
 			"name", "device", "baud",
+		),
+
+		deviceAuthentications: m.Counter(
+			"consrv_device_authentications_total",
+			"The total number of accepted and rejected SSH sessions for a serial console device.",
+			"name",
 		),
 
 		deviceSessions: m.Gauge(
