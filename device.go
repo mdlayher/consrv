@@ -2,7 +2,6 @@ package main
 
 import (
 	"io"
-	"os"
 
 	"github.com/tarm/serial"
 )
@@ -54,56 +53,18 @@ func (d *muxDevice) Close() error {
 	return nil
 }
 
-// An openFunc is a function which opens a preconfigured device.
-type openFunc func() (device, error)
-
 // openSerial produces an openFunc which produces serialDevices.
-func openSerial(name string, baud int) openFunc {
-	return func() (device, error) {
-		port, err := serial.OpenPort(&serial.Config{
-			Name: name,
-			Baud: baud,
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		return &serialDevice{
-			Port:   port,
-			device: name,
-		}, nil
-	}
-}
-
-// A deviceMap maps SSH usernames to muxDevices.
-type deviceMap struct {
-	m map[string]*muxDevice
-}
-
-// newDeviceMap creates a deviceMap from the input device mappings.
-func newDeviceMap(mapping map[string]openFunc) (*deviceMap, error) {
-	dm := &deviceMap{
-		m: make(map[string]*muxDevice, len(mapping)),
+func openSerial(name string, baud int) (*serialDevice, error) {
+	port, err := serial.OpenPort(&serial.Config{
+		Name: name,
+		Baud: baud,
+	})
+	if err != nil {
+		return nil, err
 	}
 
-	for dev, fn := range mapping {
-		d, err := fn()
-		if err != nil {
-			return nil, err
-		}
-
-		dm.m[dev] = newMuxDevice(d)
-	}
-
-	return dm, nil
-}
-
-// Open determines if a device exists given an input username.
-func (dm *deviceMap) Open(user string) (*muxDevice, error) {
-	mux, ok := dm.m[user]
-	if !ok {
-		return nil, os.ErrNotExist
-	}
-
-	return mux, nil
+	return &serialDevice{
+		Port:   port,
+		device: name,
+	}, nil
 }

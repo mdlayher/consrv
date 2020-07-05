@@ -55,18 +55,19 @@ func main() {
 
 	mm := newMetrics(metricslite.NewPrometheus(reg))
 
-	// Create device mappings from the configuration file.
-	devices := make(map[string]openFunc, len(cfg.Devices))
+	// Create device mappings from the configuration file and open the serial
+	// devices for the duration of the program's run.
+	devices := make(map[string]*muxDevice, len(cfg.Devices))
 	for _, d := range cfg.Devices {
-		log.Printf("added device %q: %s (%d baud)", d.Name, d.Device, d.Baud)
-		devices[d.Name] = openSerial(d.Device, d.Baud)
-		mm.deviceInfo(1.0, d.Name, d.Device, strconv.Itoa(d.Baud))
-	}
+		dev, err := openSerial(d.Device, d.Baud)
+		if err != nil {
+			log.Fatalf("failed to add device %q: %v", d.Name, err)
+		}
 
-	// Open serial devices for the duration of the program run.
-	dm, err := newDeviceMap(devices)
-	if err != nil {
-		log.Fatalf("failed to open devices: %v", err)
+		log.Printf("added device %q: %s (%d baud)", d.Name, d.Device, d.Baud)
+
+		devices[d.Name] = newMuxDevice(dev)
+		mm.deviceInfo(1.0, d.Name, d.Device, strconv.Itoa(d.Baud))
 	}
 
 	// Start the SSH server and configure the handler.
@@ -79,15 +80,10 @@ func main() {
 
 	srv.Handle(func(s ssh.Session) {
 		// Use usernames to map to valid device multiplexers.
-		mux, err := dm.Open(s.User())
-		if err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				// No such connection.
-				logf(s, "exiting, unknown connection %q", s.User())
-			} else {
-				logf(s, "exiting, failed to open connection %q: %v", s.User(), err)
-			}
-
+		mux, ok := devices[s.User()]
+		if !ok {
+			// No such connection.
+			logf(s, "exiting, unknown connection %q", s.User())
 			_ = s.Exit(1)
 			return
 		}
