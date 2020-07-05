@@ -4,7 +4,9 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"net/http/pprof"
 	"os"
@@ -64,10 +66,15 @@ func main() {
 		mm.deviceInfo(1.0, d.Name, d.Device, strconv.Itoa(d.Baud))
 	}
 
+	hostKey, err := ioutil.ReadFile("/perm/consrv/host_key")
+	if err != nil {
+		log.Fatalf("failed to read SSH host key: %v", err)
+	}
+
 	// Start the SSH server and configure the handler.
 	// TODO: make configurable.
-	const sshAddr = ":2222"
-	srv, err := newSSHServer(sshAddr, "/perm/consrv/host_key", devices, cfg.Identities, mm)
+
+	srv, err := newSSHServer(hostKey, devices, cfg.Identities, mm)
 	if err != nil {
 		log.Fatalf("failed to create SSH server: %v", err)
 	}
@@ -75,8 +82,15 @@ func main() {
 	var eg errgroup.Group
 
 	eg.Go(func() error {
-		log.Printf("starting SSH server on %q", sshAddr)
-		if err := srv.Serve(); err != nil {
+		const addr = ":2222"
+		l, err := net.Listen("tcp", addr)
+		if err != nil {
+			return fmt.Errorf("failed to listen for SSH: %v", err)
+		}
+		defer l.Close()
+
+		log.Printf("starting SSH server on %q", addr)
+		if err := srv.Serve(l); err != nil {
 			return fmt.Errorf("failed to serve SSH: %v", err)
 		}
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 
 	"github.com/dolmen-go/contextio"
 	"github.com/gliderlabs/ssh"
@@ -24,9 +25,9 @@ type sshServer struct {
 
 // newSSHServer creates an SSH server configured to open connections to the
 // input devices.
-func newSSHServer(addr, hostKey string, devices map[string]*muxDevice, ids []identity, mm *metrics) (*sshServer, error) {
-	srv := &ssh.Server{Addr: addr}
-	srv.SetOption(ssh.HostKeyFile(hostKey))
+func newSSHServer(hostKey []byte, devices map[string]*muxDevice, ids []identity, mm *metrics) (*sshServer, error) {
+	srv := &ssh.Server{}
+	srv.SetOption(ssh.HostKeyPEM(hostKey))
 
 	authorized := make(map[string]struct{})
 	for _, id := range ids {
@@ -42,14 +43,14 @@ func newSSHServer(addr, hostKey string, devices map[string]*muxDevice, ids []ide
 		mm:         mm,
 	}
 
-	srv.SetOption(ssh.PublicKeyAuth(s.pubkeyAuth))
-	srv.Handle(s.handle)
+	srv.PublicKeyHandler = s.pubkeyAuth
+	srv.Handler = s.handle
 
 	return s, nil
 }
 
-// Serve begins serving SSH connections.
-func (s *sshServer) Serve() error { return s.s.ListenAndServe() }
+// Serve begins serving SSH connections on l.
+func (s *sshServer) Serve(l net.Listener) error { return s.s.Serve(l) }
 
 // pubkeyAuth authenticates users via SSH public key.
 func (s *sshServer) pubkeyAuth(ctx ssh.Context, key ssh.PublicKey) bool {

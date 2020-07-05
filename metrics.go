@@ -20,6 +20,10 @@ type metrics struct {
 }
 
 func newMetrics(m metricslite.Interface) *metrics {
+	if m == nil {
+		m = metricslite.Discard()
+	}
+
 	return &metrics{
 		deviceInfo: m.Gauge(
 			"consrv_device_info",
