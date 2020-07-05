@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"strings"
 	"testing"
@@ -12,6 +14,8 @@ import (
 	"golang.org/x/net/nettest"
 	"golang.org/x/sync/errgroup"
 )
+
+// TODO: test for authentication failure.
 
 // ed25519 host and client authentication keypairs, which are only used in tests
 // and should never be used elsewhere.
@@ -61,6 +65,73 @@ func TestSSHUnknownDevice(t *testing.T) {
 		t.Fatalf("unexpected SSH output (-want +got):\n%s", diff)
 	}
 }
+
+func TestSSHSuccess(t *testing.T) {
+	// Connect to a device which will notify us when it receives data from the
+	// SSH session, and allow us to inspect the written bytes later.
+	d := &testDevice{writeC: make(chan struct{})}
+	s := testSSH(t, "test", map[string]*muxDevice{
+		"test": newMuxDevice(d),
+	})
+
+	const msg = "hello world"
+	s.Stdin = strings.NewReader(msg)
+
+	var buf bytes.Buffer
+	s.Stdout = &buf
+
+	if err := s.Start(""); err != nil {
+		t.Fatalf("failed to start command: %v", err)
+	}
+
+	// Wait for the device to receive a Write and forcibly terminate the session
+	// to stop the bidirectional copy between SSH and device. This will generate
+	// an error, but that's okay because the actual application would never
+	// terminate unless the user terminates the SSH session anyway.
+	<-d.writeC
+	if err := s.Close(); err != nil {
+		t.Fatalf("failed to close session: %v", err)
+	}
+
+	var serr *ssh.ExitMissingError
+	if err := s.Wait(); !errors.As(err, &serr) {
+		log.Fatalf("session did not return SSH missing exit error: %v", err)
+	}
+
+	// Verify that stdin data was written to the device, and that the device
+	// also presented a successful login banner.
+	if diff := cmp.Diff(msg, string(d.write)); diff != "" {
+		t.Fatalf("unexpected device write data (-want +got):\n%s", diff)
+	}
+
+	const banner = `consrv> opened serial connection "test" to test` + "\n"
+	if diff := cmp.Diff(banner, buf.String()); diff != "" {
+		t.Fatalf("unexpected SSH banner (-want +got):\n%s", diff)
+	}
+}
+
+var _ device = &testDevice{}
+
+type testDevice struct {
+	read, write []byte
+	writeC      chan struct{}
+}
+
+func (d *testDevice) Read(b []byte) (int, error) {
+	// EOF after a single read.
+	n := copy(b, d.read)
+	return n, io.EOF
+}
+
+func (d *testDevice) Write(b []byte) (int, error) {
+	d.write = append(d.write, b...)
+	close(d.writeC)
+	return len(b), nil
+}
+
+func (d *testDevice) Close() error { return nil }
+
+func (d *testDevice) String() string { return "test" }
 
 // testSSH creates a test SSH session pointed at an ephemeral server.
 func testSSH(t *testing.T, user string, devices map[string]*muxDevice) *ssh.Session {
