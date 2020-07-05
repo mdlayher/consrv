@@ -8,10 +8,17 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
+	"net/http/pprof"
 	"os"
+	"strconv"
+	"time"
 
 	"github.com/dolmen-go/contextio"
 	"github.com/gliderlabs/ssh"
+	"github.com/mdlayher/metricslite"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	gossh "golang.org/x/crypto/ssh"
 	"golang.org/x/sync/errgroup"
 )
@@ -19,11 +26,11 @@ import (
 // WIP WIP WIP, there's a lot more to do!
 //
 // TODO:
-//  - Prometheus metrics
 //  - remove hardcoded devices/paths for non-gokrazy machines
 //  - capture and inspect/alert on kernel panics
 //  - magic sysrq support
 //  - signal handler to block until all connections close?
+//  - support for detecting gokrazy build tag
 
 func main() {
 	f, err := os.Open("/perm/consrv/consrv.toml")
@@ -38,11 +45,27 @@ func main() {
 	}
 	_ = f.Close()
 
+	// Set up Prometheus metrics for the server.
+	reg := prometheus.NewPedanticRegistry()
+	reg.MustRegister(
+		prometheus.NewBuildInfoCollector(),
+		prometheus.NewGoCollector(),
+		prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}),
+	)
+
+	mm := metricslite.NewPrometheus(reg)
+	deviceInfo := mm.Gauge(
+		"consrv_device_info",
+		"Information metrics about each configured serial console device.",
+		"name", "device", "baud",
+	)
+
 	// Create device mappings from the configuration file.
 	devices := make(map[string]openFunc, len(cfg.Devices))
 	for _, d := range cfg.Devices {
 		log.Printf("added device %q: %s (%d baud)", d.Name, d.Device, d.Baud)
 		devices[d.Name] = openSerial(d.Device, d.Baud)
+		deviceInfo(1.0, d.Name, d.Device, strconv.Itoa(d.Baud))
 	}
 
 	// Open serial devices for the duration of the program run.
@@ -53,8 +76,8 @@ func main() {
 
 	// Start the SSH server and configure the handler.
 	// TODO: make configurable.
-	const addr = ":2222"
-	srv, err := newSSHServer(addr, "/perm/consrv/host_key", cfg.Identities)
+	const sshAddr = ":2222"
+	srv, err := newSSHServer(sshAddr, "/perm/consrv/host_key", cfg.Identities)
 	if err != nil {
 		log.Fatalf("failed to create SSH server: %v", err)
 	}
@@ -98,9 +121,51 @@ func main() {
 		log.Printf("%s: closed serial connection %q to %s", s.RemoteAddr(), s.User(), mux.String())
 	})
 
-	log.Printf("starting SSH server on %q", addr)
-	if err := srv.ListenAndServe(); err != nil {
-		log.Fatalf("failed to serve SSH: %v", err)
+	var eg errgroup.Group
+
+	eg.Go(func() error {
+		log.Printf("starting SSH server on %q", sshAddr)
+		if err := srv.ListenAndServe(); err != nil {
+			return fmt.Errorf("failed to serve SSH: %v", err)
+		}
+
+		return nil
+	})
+
+	eg.Go(func() error {
+		// TODO: move to configuration file, enabling and disabling of
+		// Prometheus and/or pprof handlers.
+		//
+		// Also consider
+		// https://godoc.org/github.com/gokrazy/gokrazy#PrivateInterfaceAddrs
+		// when running on gokrazy.
+		const addr = ":9288"
+
+		mux := http.NewServeMux()
+		mux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
+		mux.HandleFunc("/debug/pprof/", pprof.Index)
+		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+
+		log.Printf("starting HTTP debug server on %q", addr)
+
+		s := &http.Server{
+			Addr:        addr,
+			ReadTimeout: 1 * time.Second,
+			Handler:     mux,
+		}
+
+		if err := s.ListenAndServe(); err != nil {
+			return fmt.Errorf("failed to serve HTTP: %v", err)
+		}
+
+		return nil
+	})
+
+	if err := eg.Wait(); err != nil {
+		log.Fatalf("failed to run: %v", err)
 	}
 }
 
