@@ -63,7 +63,7 @@ func (s *sshServer) pubkeyAuth(ctx ssh.Context, key ssh.PublicKey) bool {
 		action = "rejected"
 	}
 
-	s.mm.deviceAuthentications(action)
+	s.mm.deviceAuthentications(1.0, action)
 	log.Printf("%s: %s public key authentication for %s", ctx.RemoteAddr(), action, gossh.FingerprintSHA256(key))
 	return ok
 }
@@ -74,7 +74,7 @@ func (s *sshServer) handle(session ssh.Session) {
 	mux, ok := s.devices[session.User()]
 	if !ok {
 		// No such connection.
-		s.mm.deviceUnknownSessions()
+		s.mm.deviceUnknownSessions(1.0)
 		logf(session, "exiting, unknown connection %q", session.User())
 		_ = session.Exit(1)
 		return
