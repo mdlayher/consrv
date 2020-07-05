@@ -15,6 +15,8 @@ type metrics struct {
 	deviceAuthentications metricslite.Counter
 	deviceSessions        metricslite.Gauge
 	deviceUnknownSessions metricslite.Counter
+	deviceReadBytes       metricslite.Counter
+	deviceWriteBytes      metricslite.Counter
 }
 
 func newMetrics(m metricslite.Interface) *metrics {
@@ -40,6 +42,18 @@ func newMetrics(m metricslite.Interface) *metrics {
 		deviceUnknownSessions: m.Counter(
 			"consrv_device_unknown_sessions_total",
 			"The total number of SSH sessions which attempted to open a non-existent device.",
+		),
+
+		deviceReadBytes: m.Counter(
+			"consrv_device_read_bytes_total",
+			"The total number of bytes read from a serial device.",
+			"name",
+		),
+
+		deviceWriteBytes: m.Counter(
+			"consrv_device_write_bytes_total",
+			"The total number of bytes written to a serial device.",
+			"name",
 		),
 	}
 }

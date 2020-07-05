@@ -53,7 +53,7 @@ func main() {
 	// devices for the duration of the program's run.
 	devices := make(map[string]*muxDevice, len(cfg.Devices))
 	for _, d := range cfg.Devices {
-		dev, err := openSerial(d.Device, d.Baud)
+		dev, err := openSerial(d.Name, d.Device, d.Baud, mm.deviceReadBytes, mm.deviceWriteBytes)
 		if err != nil {
 			log.Fatalf("failed to add device %q: %v", d.Name, err)
 		}
