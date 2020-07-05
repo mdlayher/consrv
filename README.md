@@ -25,6 +25,13 @@ my headless machines.
                   |-- USB to serial --> [server]
 ```
 
+I use the following hardware, but any serial equipment supported by Linux should
+just work:
+
+- [Syba dual port DB9 COM RS232 PCIe x1
+  card](https://www.amazon.com/gp/product/B003D3MFHM/)
+- [StarTech USB to Serial RS232 null-modem adapter](https://www.amazon.com/gp/product/B008634VJY/)
+
 # Setup
 
 After formatting and mounting `/perm` on a gokrazy device, create the following
