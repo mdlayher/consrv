@@ -28,7 +28,7 @@ func newMetrics(m metricslite.Interface) *metrics {
 		deviceInfo: m.Gauge(
 			"consrv_device_info",
 			"Information metrics about each configured serial console device.",
-			"name", "device", "baud",
+			"name", "device", "serial", "baud",
 		),
 
 		deviceAuthentications: m.Counter(

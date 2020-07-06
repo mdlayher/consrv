@@ -47,10 +47,12 @@ authentication is not supported. For example:
 
 ```toml
 # Configure one or more USB to serial devices with friendly names which are used
-# as the SSH username to access a device's serial console.
+# as the SSH username to access a device's serial console. You must specify either
+# "device" as the path to the device or "serial" to look up the device's path
+# by the adapter's serial number (useful for machines with many connections).
 [[devices]]
 name = "server"
-device = "/dev/ttyUSB0"
+serial = "A64NMAJS"
 baud = 115200
 
 [[devices]]
@@ -71,7 +73,7 @@ the gokrazy device. When you're ready to end your session, use the SSH escape
 
 ```text
 $ ssh -i ~/.ssh/mdlayher_ed25519 -p 2222 server@monitnerr-1
-consrv> opened serial connection "server" to /dev/ttyUSB0
+consrv> opened serial connection "server": path: "/dev/ttyUSB0", serial: "A64NMAJS", baud: 115200
 
 servnerr-3 login: matt
 Password:

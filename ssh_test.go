@@ -104,7 +104,7 @@ func TestSSHSuccess(t *testing.T) {
 		t.Fatalf("unexpected device write data (-want +got):\n%s", diff)
 	}
 
-	const banner = `consrv> opened serial connection "test" to test` + "\n"
+	const banner = `consrv> opened serial connection test` + "\n"
 	if diff := cmp.Diff(banner, buf.String()); diff != "" {
 		t.Fatalf("unexpected SSH banner (-want +got):\n%s", diff)
 	}

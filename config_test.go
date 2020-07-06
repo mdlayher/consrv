@@ -99,6 +99,11 @@ func Test_parseConfig(t *testing.T) {
 			device = "/dev/ttyUSB0"
 			baud = 115200
 
+			[[devices]]
+			name = "desktop"
+			serial = "DEADBEEF"
+			baud = 115200
+
 			[[identities]]
 			name = "ed25519"
 			public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJ6PAHCvJTosPqBppE6lmjjRt9Qlcisqx+DXt7jIbLba test ed25519"
@@ -108,11 +113,18 @@ func Test_parseConfig(t *testing.T) {
 			public_key = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDDkvg9+NTySctVaMkbZGwTRIUiQSo4crGWQPeFTi/XM3KhcUY+WduwHChJX1h03/DKJps8wtHUn3LmUKFR4BoJEgt8Od+L6ey5sev4lvPa2wDc5HJfervgCnVt9aomdFqeZUe6g4BDdPLUGbzT3T+A+08ocXy/eVv9Kke7Ka6GslJQQ5TBjW0AbPhxu6QmoZDb0tiWf9CwyVpiox5+vW7E+O6U1QOKT45Ellc2smHSAcI1gUDborS0GhFSso9SagMxcWNbZf8920DeaLs5tb8uwKfWKqHJfkY+VK3QuufpWZM3BJTPa0PePd75NRra2BOV4LDwGlLrZjOCULlYawDlDOIm6rpC3QV7juHTFWjS8ImvbsyEWZSE9N6klDMc23Zl9vhqJcG4U9LVAv2QMcr8aXBnmSo49rkd7/H6yHZgWqmrAijloZkiwsTbofT+lQx3JLEagk1rd8rmCp4F7WeUShvvmTq0tyPDutIhd1TXwLB0gyFObCDgb3CrXPtsACc= test RSA"
 			`,
 			c: &config{
-				Devices: []rawDevice{{
-					Name:   "server",
-					Device: "/dev/ttyUSB0",
-					Baud:   115200,
-				}},
+				Devices: []rawDevice{
+					{
+						Name:   "server",
+						Device: "/dev/ttyUSB0",
+						Baud:   115200,
+					},
+					{
+						Name:   "desktop",
+						Serial: "DEADBEEF",
+						Baud:   115200,
+					},
+				},
 				Identities: []identity{
 					{
 						Name:      "ed25519",

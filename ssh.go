@@ -86,7 +86,7 @@ func (s *sshServer) handle(session ssh.Session) {
 
 	// Begin proxying between SSH and serial console mux until the SSH
 	// connection closes or is broken.
-	logf(session, "opened serial connection %q to %s", session.User(), mux.String())
+	logf(session, "opened serial connection %s", mux.String())
 
 	ctx, cancel := context.WithCancel(session.Context())
 	defer cancel()
@@ -105,7 +105,7 @@ func (s *sshServer) handle(session ssh.Session) {
 	}
 
 	_ = session.Exit(0)
-	log.Printf("%s: closed serial connection %q to %s", session.RemoteAddr(), session.User(), mux.String())
+	log.Printf("%s: closed serial connection %s", session.RemoteAddr(), mux)
 }
 
 // eofCopy is a context-aware io.Copy that consumes io.EOF errors and is

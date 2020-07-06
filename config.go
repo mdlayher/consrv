@@ -33,6 +33,7 @@ type file struct {
 type rawDevice struct {
 	Name   string `toml:"name"`
 	Device string `toml:"device"`
+	Serial string `toml:"serial"`
 	Baud   int    `toml:"baud"`
 }
 
@@ -67,12 +68,13 @@ func parseConfig(r io.Reader) (*config, error) {
 			return nil, errors.New("device must have a name")
 		}
 
-		if d.Device == "" {
-			return nil, fmt.Errorf("device %q must have a device path", d.Name)
-		}
-
 		if d.Baud == 0 {
 			return nil, fmt.Errorf("device %q must have a baud rate set", d.Name)
+		}
+
+		// Must have at least one identifying field present.
+		if d.Device == "" && d.Serial == "" {
+			return nil, fmt.Errorf("device %q must have a device path or serial", d.Name)
 		}
 	}
 
