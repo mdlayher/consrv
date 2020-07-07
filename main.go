@@ -22,14 +22,15 @@ import (
 // WIP WIP WIP, there's a lot more to do!
 //
 // TODO:
-//  - remove hardcoded devices/paths for non-gokrazy machines
 //  - capture and inspect/alert on kernel panics
 //  - magic sysrq support
 //  - signal handler to block until all connections close?
-//  - support for detecting gokrazy build tag
 
 func main() {
-	f, err := os.Open("/perm/consrv/consrv.toml")
+	// Config/host key paths are only configurable on non-gokrazy platforms.
+	cfgFile, keyFile := filePaths()
+
+	f, err := os.Open(cfgFile)
 	if err != nil {
 		log.Fatalf("failed to open config file: %v", err)
 	}
@@ -40,6 +41,11 @@ func main() {
 		log.Fatalf("failed to parse config: %v", err)
 	}
 	_ = f.Close()
+
+	hostKey, err := ioutil.ReadFile(keyFile)
+	if err != nil {
+		log.Fatalf("failed to read SSH host key: %v", err)
+	}
 
 	// Set up Prometheus metrics for the server.
 	reg := prometheus.NewPedanticRegistry()
@@ -65,11 +71,6 @@ func main() {
 
 		devices[d.Name] = newMuxDevice(dev)
 		mm.deviceInfo(1.0, d.Name, d.Device, d.Serial, strconv.Itoa(d.Baud))
-	}
-
-	hostKey, err := ioutil.ReadFile("/perm/consrv/host_key")
-	if err != nil {
-		log.Fatalf("failed to read SSH host key: %v", err)
 	}
 
 	// Start the SSH server and configure the handler.

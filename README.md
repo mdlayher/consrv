@@ -1,9 +1,9 @@
 # consrv [![Linux Test Status](https://github.com/mdlayher/consrv/workflows/Linux%20Test/badge.svg)](https://github.com/mdlayher/consrv/actions) [![GoDoc](https://godoc.org/github.com/mdlayher/consrv?status.svg)](https://godoc.org/github.com/mdlayher/consrv) [![Go Report Card](https://goreportcard.com/badge/github.com/mdlayher/consrv)](https://goreportcard.com/report/github.com/mdlayher/consrv)
 
-Command `consrv` is a basic SSH to serial console bridge server for gokrazy.org
-appliances. MIT Licensed.
+Command `consrv` is a SSH to serial console bridge server, originally designed
+for deployment on [gokrazy.org](https://gokrazy.org) devices. MIT Licensed.
 
-# Overview
+## Overview
 
 SSH can be used to conveniently access remote machines over the network, but
 only if the machine has functional networking.
@@ -15,8 +15,8 @@ rescue a machine.
 `consrv` combines the best of both worlds: an SSH interface running on a
 Raspberry Pi which can provide serial console access to one or more remote
 machines, all secured by an SSH channel. I (Matt Layher) run `consrv` on two
-Raspberry Pi 4s using gokrazy.org to act as remote serial console devices for
-my headless machines.
+Raspberry Pi 4s using gokrazy to act as remote serial console servers for my
+headless machines.
 
 ```text
 -- Ethernet --> [Raspberry Pi + consrv]
@@ -32,14 +32,31 @@ just work:
   card](https://www.amazon.com/gp/product/B003D3MFHM/)
 - [StarTech USB to Serial RS232 null-modem adapter](https://www.amazon.com/gp/product/B008634VJY/)
 
-# Setup
+## Setup (gokrazy)
 
 After formatting and mounting `/perm` on a gokrazy device, create the following
 files:
 
 - `/perm/consrv/host_key`: an OpenSSH format private key for the host (generate
   using `ssh-keygen`, I recommend `ssh-keygen -t ed25519`)
-- `/perm/consrv/consrv.toml`: the configuration file for `consrv`:
+- `/perm/consrv/consrv.toml`: the configuration file for `consrv`
+
+## Setup (Linux/other OS)
+
+When `consrv` is built for a non-gokrazy Linux or other operating system
+(without build tag `gokrazy`), flags are available to specify the location of
+the configuration and SSH host key files:
+
+```
+$ ./consrv -h
+Usage of ./consrv:
+  -c string
+        path to consrv.toml configuration file (default "consrv.toml")
+  -k string
+        path to OpenSSH format host key file (default "host_key")
+```
+
+## Configuration
 
 The TOML configuration file should have device entries for each serial device,
 and SSH public key identities which can be used to access the devices. Password
@@ -68,7 +85,7 @@ public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIN5i5d0mRKAf02m+ju+I1KrAYw3Ny2
 ```
 
 Now you can log in to either device's serial console over SSH using port 2222 on
-the gokrazy device. When you're ready to end your session, use the SSH escape
+the `consrv` host. When you're ready to end your session, use the SSH escape
 `ENTER ~ .` to break the connection:
 
 ```text
