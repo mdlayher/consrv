@@ -53,6 +53,17 @@ func Test_parseConfig(t *testing.T) {
 			[[devices]]
 			name = "foo"
 			device = ""
+			baud = 115200
+			[[identities]]
+			`,
+		},
+		{
+			name: "bad device serial",
+			s: `
+			[[devices]]
+			name = "foo"
+			serial = ""
+			baud = 115200
 			[[identities]]
 			`,
 		},
