@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"os"
 	"strings"
 	"testing"
 
@@ -53,7 +54,7 @@ func TestSSHUnknownDevice(t *testing.T) {
 	var serr *ssh.ExitError
 	out, err := s.CombinedOutput("")
 	if !errors.As(err, &serr) {
-		log.Fatalf("session did not return SSH exit error: %v", err)
+		t.Fatalf("session did not return SSH exit error: %v", err)
 	}
 
 	if diff := cmp.Diff(1, serr.ExitStatus()); diff != "" {
@@ -95,7 +96,7 @@ func TestSSHSuccess(t *testing.T) {
 
 	var serr *ssh.ExitMissingError
 	if err := s.Wait(); !errors.As(err, &serr) {
-		log.Fatalf("session did not return SSH missing exit error: %v", err)
+		t.Fatalf("session did not return SSH missing exit error: %v", err)
 	}
 
 	// Verify that stdin data was written to the device, and that the device
@@ -156,6 +157,7 @@ func testSSH(t *testing.T, user string, devices map[string]*muxDevice) *ssh.Sess
 		[]byte(strings.TrimSpace(testHostPrivate)),
 		devices,
 		ids,
+		log.New(os.Stderr, "", 0),
 		newMetrics(nil),
 	)
 	if err != nil {

@@ -30,21 +30,23 @@ func main() {
 	// Config/host key paths are only configurable on non-gokrazy platforms.
 	cfgFile, keyFile := filePaths()
 
+	ll := log.New(os.Stderr, "", log.LstdFlags)
+
 	f, err := os.Open(cfgFile)
 	if err != nil {
-		log.Fatalf("failed to open config file: %v", err)
+		ll.Fatalf("failed to open config file: %v", err)
 	}
 	defer f.Close()
 
 	cfg, err := parseConfig(f)
 	if err != nil {
-		log.Fatalf("failed to parse config: %v", err)
+		ll.Fatalf("failed to parse config: %v", err)
 	}
 	_ = f.Close()
 
 	hostKey, err := ioutil.ReadFile(keyFile)
 	if err != nil {
-		log.Fatalf("failed to read SSH host key: %v", err)
+		ll.Fatalf("failed to read SSH host key: %v", err)
 	}
 
 	// Set up Prometheus metrics for the server.
@@ -64,10 +66,10 @@ func main() {
 	for _, d := range cfg.Devices {
 		dev, err := fs.openSerial(&d, mm.deviceReadBytes, mm.deviceWriteBytes)
 		if err != nil {
-			log.Fatalf("failed to add device %q: %v", d.Name, err)
+			ll.Fatalf("failed to add device %q: %v", d.Name, err)
 		}
 
-		log.Printf("added device %s", dev)
+		ll.Printf("added device %s", dev)
 
 		devices[d.Name] = newMuxDevice(dev)
 		mm.deviceInfo(1.0, d.Name, d.Device, d.Serial, strconv.Itoa(d.Baud))
@@ -76,9 +78,9 @@ func main() {
 	// Start the SSH server and configure the handler.
 	// TODO: make configurable.
 
-	srv, err := newSSHServer(hostKey, devices, cfg.Identities, mm)
+	srv, err := newSSHServer(hostKey, devices, cfg.Identities, ll, mm)
 	if err != nil {
-		log.Fatalf("failed to create SSH server: %v", err)
+		ll.Fatalf("failed to create SSH server: %v", err)
 	}
 
 	var eg errgroup.Group
@@ -91,7 +93,7 @@ func main() {
 		}
 		defer l.Close()
 
-		log.Printf("starting SSH server on %q", addr)
+		ll.Printf("starting SSH server on %q", addr)
 		if err := srv.Serve(l); err != nil {
 			return fmt.Errorf("failed to serve SSH: %v", err)
 		}
@@ -116,7 +118,7 @@ func main() {
 		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 
-		log.Printf("starting HTTP debug server on %q", addr)
+		ll.Printf("starting HTTP debug server on %q", addr)
 
 		s := &http.Server{
 			Addr:        addr,
@@ -132,6 +134,6 @@ func main() {
 	})
 
 	if err := eg.Wait(); err != nil {
-		log.Fatalf("failed to run: %v", err)
+		ll.Fatalf("failed to run: %v", err)
 	}
 }

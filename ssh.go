@@ -20,19 +20,20 @@ type sshServer struct {
 	authorized map[string]struct{}
 	devices    map[string]*muxDevice
 
+	ll *log.Logger
 	mm *metrics
 }
 
 // newSSHServer creates an SSH server configured to open connections to the
 // input devices.
-func newSSHServer(hostKey []byte, devices map[string]*muxDevice, ids []identity, mm *metrics) (*sshServer, error) {
+func newSSHServer(hostKey []byte, devices map[string]*muxDevice, ids []identity, ll *log.Logger, mm *metrics) (*sshServer, error) {
 	srv := &ssh.Server{}
 	srv.SetOption(ssh.HostKeyPEM(hostKey))
 
 	authorized := make(map[string]struct{})
 	for _, id := range ids {
 		f := gossh.FingerprintSHA256(id.PublicKey)
-		log.Printf("added identity %q: %s", id.Name, f)
+		ll.Printf("added identity %q: %s", id.Name, f)
 		authorized[f] = struct{}{}
 	}
 
@@ -40,6 +41,7 @@ func newSSHServer(hostKey []byte, devices map[string]*muxDevice, ids []identity,
 		s:          srv,
 		authorized: authorized,
 		devices:    devices,
+		ll:         ll,
 		mm:         mm,
 	}
 
@@ -65,7 +67,7 @@ func (s *sshServer) pubkeyAuth(ctx ssh.Context, key ssh.PublicKey) bool {
 	}
 
 	s.mm.deviceAuthentications(1.0, action)
-	log.Printf("%s: %s public key authentication for %s", ctx.RemoteAddr(), action, gossh.FingerprintSHA256(key))
+	s.ll.Printf("%s: %s public key authentication for %s", ctx.RemoteAddr(), action, gossh.FingerprintSHA256(key))
 	return ok
 }
 
@@ -76,7 +78,7 @@ func (s *sshServer) handle(session ssh.Session) {
 	if !ok {
 		// No such connection.
 		s.mm.deviceUnknownSessions(1.0)
-		logf(session, "exiting, unknown connection %q", session.User())
+		s.logf(session, "exiting, unknown connection %q", session.User())
 		_ = session.Exit(1)
 		return
 	}
@@ -86,7 +88,7 @@ func (s *sshServer) handle(session ssh.Session) {
 
 	// Begin proxying between SSH and serial console mux until the SSH
 	// connection closes or is broken.
-	logf(session, "opened serial connection %s", mux.String())
+	s.logf(session, "opened serial connection %s", mux.String())
 
 	ctx, cancel := context.WithCancel(session.Context())
 	defer cancel()
@@ -101,11 +103,11 @@ func (s *sshServer) handle(session ssh.Session) {
 	eg.Go(eofCopy(ctx, session, r))
 
 	if err := eg.Wait(); err != nil {
-		log.Printf("error proxying SSH/serial for %s: %v", session.RemoteAddr(), err)
+		s.ll.Printf("error proxying SSH/serial for %s: %v", session.RemoteAddr(), err)
 	}
 
 	_ = session.Exit(0)
-	log.Printf("%s: closed serial connection %s", session.RemoteAddr(), mux)
+	s.ll.Printf("%s: closed serial connection %s", session.RemoteAddr(), mux)
 }
 
 // eofCopy is a context-aware io.Copy that consumes io.EOF errors and is
@@ -125,8 +127,8 @@ func eofCopy(ctx context.Context, w io.Writer, r io.Reader) func() error {
 }
 
 // logf outputs a formatted log message to both stderr and an SSH client.
-func logf(s ssh.Session, format string, v ...interface{}) {
+func (s *sshServer) logf(session ssh.Session, format string, v ...interface{}) {
 	msg := fmt.Sprintf(format, v...)
-	log.Printf("%s: %s", s.RemoteAddr(), msg)
-	fmt.Fprintf(s, "consrv> %s\n", msg)
+	s.ll.Printf("%s: %s", session.RemoteAddr(), msg)
+	fmt.Fprintf(session, "consrv> %s\n", msg)
 }
