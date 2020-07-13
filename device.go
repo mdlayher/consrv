@@ -34,14 +34,14 @@ func (d *serialDevice) Close() error { return d.rwc.Close() }
 // Read implements io.ReadWriteCloser.
 func (d *serialDevice) Read(b []byte) (int, error) {
 	n, err := d.rwc.Read(b)
-	d.reads(float64(n), d.device)
+	d.reads(float64(n), d.name)
 	return n, err
 }
 
 // Write implements io.ReadWriteCloser.
 func (d *serialDevice) Write(b []byte) (int, error) {
 	n, err := d.rwc.Write(b)
-	d.writes(float64(n), d.device)
+	d.writes(float64(n), d.name)
 	return n, err
 }
 
