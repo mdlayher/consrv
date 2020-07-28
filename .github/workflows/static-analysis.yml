@@ -33,3 +33,6 @@ jobs:
 
     - name: Run go vet
       run: go vet ./...
+
+    - name: Run CI script
+      run: ./scripts/cibuild.sh
