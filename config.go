@@ -44,10 +44,11 @@ type file struct {
 
 // A rawDevice is a raw device configuration.
 type rawDevice struct {
-	Name   string `toml:"name"`
-	Device string `toml:"device"`
-	Serial string `toml:"serial"`
-	Baud   int    `toml:"baud"`
+	Name       string   `toml:"name"`
+	Device     string   `toml:"device"`
+	Serial     string   `toml:"serial"`
+	Baud       int      `toml:"baud"`
+	Identities []string `toml:"identities"`
 }
 
 // A rawIdentity is a raw identity configuration.
@@ -75,6 +76,29 @@ func parseConfig(r io.Reader) (*config, error) {
 		return nil, errors.New("no configured identities")
 	}
 
+	// Track the identities found so they can be matched against devices which
+	// only allow access from a specific identity.
+	validIDs := make(map[string]struct{})
+	ids := make([]identity, 0, len(f.Identities))
+
+	// Identities must have each field set, and have a valid public key.
+	for _, id := range f.Identities {
+		if id.Name == "" {
+			return nil, errors.New("identity must have a name")
+		}
+
+		key, _, _, _, err := ssh.ParseAuthorizedKey([]byte(id.PublicKey))
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse identity public key %q: %v", id.PublicKey, err)
+		}
+
+		validIDs[id.Name] = struct{}{}
+		ids = append(ids, identity{
+			Name:      id.Name,
+			PublicKey: key,
+		})
+	}
+
 	// Devices must have each field set.
 	for _, d := range f.Devices {
 		if d.Name == "" {
@@ -89,24 +113,13 @@ func parseConfig(r io.Reader) (*config, error) {
 		if d.Device == "" && d.Serial == "" {
 			return nil, fmt.Errorf("device %q must have a device path or serial", d.Name)
 		}
-	}
 
-	// Identities must have each field set, and have a valid public key.
-	ids := make([]identity, 0, len(f.Identities))
-	for _, id := range f.Identities {
-		if id.Name == "" {
-			return nil, errors.New("identity must have a name")
+		// If the device has identities configured, those identities must exist.
+		for _, id := range d.Identities {
+			if _, ok := validIDs[id]; !ok {
+				return nil, fmt.Errorf("device %q is configured with unknown identity %q", d.Name, id)
+			}
 		}
-
-		key, _, _, _, err := ssh.ParseAuthorizedKey([]byte(id.PublicKey))
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse identity public key %q: %v", id.PublicKey, err)
-		}
-
-		ids = append(ids, identity{
-			Name:      id.Name,
-			PublicKey: key,
-		})
 	}
 
 	return &config{

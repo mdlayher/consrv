@@ -53,44 +53,6 @@ func Test_parseConfig(t *testing.T) {
 			`,
 		},
 		{
-			name: "bad device name",
-			s: `
-			[[devices]]
-			name = ""
-			[[identities]]
-			`,
-		},
-		{
-			name: "bad device path",
-			s: `
-			[[devices]]
-			name = "foo"
-			device = ""
-			baud = 115200
-			[[identities]]
-			`,
-		},
-		{
-			name: "bad device serial",
-			s: `
-			[[devices]]
-			name = "foo"
-			serial = ""
-			baud = 115200
-			[[identities]]
-			`,
-		},
-		{
-			name: "bad device baud rate",
-			s: `
-			[[devices]]
-			name = "foo"
-			device = "/dev/ttyUSB0"
-			baud = 0
-			[[identities]]
-			`,
-		},
-		{
 			name: "bad identity name",
 			s: `
 			[[devices]]
@@ -116,12 +78,77 @@ func Test_parseConfig(t *testing.T) {
 			`,
 		},
 		{
+			name: "bad device name",
+			s: `
+			[[devices]]
+			name = ""
+
+			[[identities]]
+			name = "ed25519"
+			public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJ6PAHCvJTosPqBppE6lmjjRt9Qlcisqx+DXt7jIbLba test ed25519"
+			`,
+		},
+		{
+			name: "bad device path",
+			s: `
+			[[devices]]
+			name = "foo"
+			device = ""
+			baud = 115200
+
+			[[identities]]
+			name = "ed25519"
+			public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJ6PAHCvJTosPqBppE6lmjjRt9Qlcisqx+DXt7jIbLba test ed25519"
+			`,
+		},
+		{
+			name: "bad device serial",
+			s: `
+			[[devices]]
+			name = "foo"
+			serial = ""
+			baud = 115200
+
+			[[identities]]
+			name = "ed25519"
+			public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJ6PAHCvJTosPqBppE6lmjjRt9Qlcisqx+DXt7jIbLba test ed25519"
+			`,
+		},
+		{
+			name: "bad device baud rate",
+			s: `
+			[[devices]]
+			name = "foo"
+			device = "/dev/ttyUSB0"
+			baud = 0
+
+			[[identities]]
+			name = "ed25519"
+			public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJ6PAHCvJTosPqBppE6lmjjRt9Qlcisqx+DXt7jIbLba test ed25519"
+			`,
+		},
+		{
+			name: "bad device identity",
+			s: `
+			[[devices]]
+			name = "server"
+			device = "/dev/ttyUSB0"
+			baud = 115200
+			identities = ["bad"]
+
+			[[identities]]
+			name = "ed25519"
+			public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJ6PAHCvJTosPqBppE6lmjjRt9Qlcisqx+DXt7jIbLba test ed25519"
+			`,
+		},
+		{
 			name: "OK",
 			s: `
 			[[devices]]
 			name = "server"
 			device = "/dev/ttyUSB0"
 			baud = 115200
+			identities = ["ed25519"]
 
 			[[devices]]
 			name = "desktop"
@@ -139,9 +166,10 @@ func Test_parseConfig(t *testing.T) {
 			c: &config{
 				Devices: []rawDevice{
 					{
-						Name:   "server",
-						Device: "/dev/ttyUSB0",
-						Baud:   115200,
+						Name:       "server",
+						Device:     "/dev/ttyUSB0",
+						Baud:       115200,
+						Identities: []string{"ed25519"},
 					},
 					{
 						Name:   "desktop",

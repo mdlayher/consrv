@@ -67,10 +67,15 @@ authentication is not supported. For example:
 # as the SSH username to access a device's serial console. You must specify either
 # "device" as the path to the device or "serial" to look up the device's path
 # by the adapter's serial number (useful for machines with many connections).
+#
+# Optionally a list of identities which are allowed to access a device may be
+# provided on a per-device basis. If no identities key is configured, all
+# identities are allowed to access the device.
 [[devices]]
 name = "server"
 serial = "A64NMAJS"
 baud = 115200
+identities = ["mdlayher"]
 
 [[devices]]
 name = "desktop"
