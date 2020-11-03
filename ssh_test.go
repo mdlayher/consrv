@@ -160,17 +160,21 @@ func testSSH(t *testing.T, user string, devices map[string]*muxDevice) *ssh.Sess
 		_ = l.Close()
 	})
 
+	ll := log.New(os.Stderr, "", 0)
+
 	// Allow authentication from a single predefined keypair.
-	ids := []identity{{
-		Name:      "test",
-		PublicKey: mustKey(testClientPublic),
-	}}
+	ids := newIdentities(&config{
+		Identities: []identity{{
+			Name:      "test",
+			PublicKey: mustKey(testClientPublic),
+		}},
+	}, ll)
 
 	srv, err := newSSHServer(
 		[]byte(strings.TrimSpace(testHostPrivate)),
 		devices,
 		ids,
-		log.New(os.Stderr, "", 0),
+		ll,
 		newMetrics(nil),
 	)
 	if err != nil {

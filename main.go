@@ -91,7 +91,7 @@ func main() {
 	// Start the SSH server and configure the handler.
 	// TODO: make configurable.
 
-	srv, err := newSSHServer(hostKey, devices, cfg.Identities, ll, mm)
+	srv, err := newSSHServer(hostKey, devices, newIdentities(cfg, ll), ll, mm)
 	if err != nil {
 		ll.Fatalf("failed to create SSH server: %v", err)
 	}

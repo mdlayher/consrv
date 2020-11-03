@@ -29,9 +29,9 @@ import (
 
 // An sshServer is a wrapped SSH server type.
 type sshServer struct {
-	s          *ssh.Server
-	authorized map[string]struct{}
-	devices    map[string]*muxDevice
+	s       *ssh.Server
+	devices map[string]*muxDevice
+	ids     *identities
 
 	ll *log.Logger
 	mm *metrics
@@ -39,23 +39,17 @@ type sshServer struct {
 
 // newSSHServer creates an SSH server configured to open connections to the
 // input devices.
-func newSSHServer(hostKey []byte, devices map[string]*muxDevice, ids []identity, ll *log.Logger, mm *metrics) (*sshServer, error) {
+func newSSHServer(hostKey []byte, devices map[string]*muxDevice, ids *identities, ll *log.Logger, mm *metrics) (*sshServer, error) {
 	srv := &ssh.Server{}
 	srv.SetOption(ssh.HostKeyPEM(hostKey))
 
-	authorized := make(map[string]struct{})
-	for _, id := range ids {
-		f := gossh.FingerprintSHA256(id.PublicKey)
-		ll.Printf("added identity %q: %s", id.Name, f)
-		authorized[f] = struct{}{}
-	}
-
 	s := &sshServer{
-		s:          srv,
-		authorized: authorized,
-		devices:    devices,
-		ll:         ll,
-		mm:         mm,
+		s:       srv,
+		devices: devices,
+		ids:     ids,
+
+		ll: ll,
+		mm: mm,
 	}
 
 	srv.PublicKeyHandler = s.pubkeyAuth
@@ -69,8 +63,7 @@ func (s *sshServer) Serve(l net.Listener) error { return s.s.Serve(l) }
 
 // pubkeyAuth authenticates users via SSH public key.
 func (s *sshServer) pubkeyAuth(ctx ssh.Context, key ssh.PublicKey) bool {
-	// Is this client's key authorized for access?
-	_, ok := s.authorized[gossh.FingerprintSHA256(key)]
+	ok := s.ids.authenticate(ctx.User(), key)
 
 	var action string
 	if ok {
