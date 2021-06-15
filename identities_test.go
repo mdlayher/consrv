@@ -158,13 +158,13 @@ func Test_identities(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			for _, id := range tt.allow {
-				if !tt.ids.authenticate(id.User, id.Key) {
+				if _, ok := tt.ids.authenticate(id.User, id.Key); !ok {
 					t.Fatalf("expected user %q to successfully authenticate", id.User)
 				}
 			}
 
 			for _, id := range tt.deny {
-				if tt.ids.authenticate(id.User, id.Key) {
+				if _, ok := tt.ids.authenticate(id.User, id.Key); ok {
 					t.Fatalf("expected user %q to fail to authenticate", id.User)
 				}
 			}

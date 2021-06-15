@@ -63,17 +63,24 @@ func (s *sshServer) Serve(l net.Listener) error { return s.s.Serve(l) }
 
 // pubkeyAuth authenticates users via SSH public key.
 func (s *sshServer) pubkeyAuth(ctx ssh.Context, key ssh.PublicKey) bool {
-	ok := s.ids.authenticate(ctx.User(), key)
+	name, ok := s.ids.authenticate(ctx.User(), key)
 
-	var action string
+	var id, action string
 	if ok {
+		// Success, log the friendly name of the public key identity.
+		id = name
 		action = "accepted"
 	} else {
+		// Failure, log the fingerprint of the unknown public key identity.
+		id = gossh.FingerprintSHA256(key)
 		action = "rejected"
 	}
 
 	s.mm.deviceAuthentications(1.0, action)
-	s.ll.Printf("%s: %s public key authentication for %s", ctx.RemoteAddr(), action, gossh.FingerprintSHA256(key))
+
+	// We can't use the logf helper because we don't want to print this
+	// information to the SSH session.
+	s.ll.Printf("%s: %s public key authentication for %q", addrString(ctx.RemoteAddr()), action, id)
 	return ok
 }
 
@@ -113,7 +120,10 @@ func (s *sshServer) handle(session ssh.Session) {
 	}
 
 	_ = session.Exit(0)
-	s.ll.Printf("%s: closed serial connection %s", session.RemoteAddr(), mux)
+
+	// We can't use the logf helper because we don't want to print this
+	// information to the SSH session.
+	s.ll.Printf("%s: closed serial connection %s", addrString(session.RemoteAddr()), mux)
 }
 
 // eofCopy is a context-aware io.Copy that consumes io.EOF errors and is
@@ -135,6 +145,17 @@ func eofCopy(ctx context.Context, w io.Writer, r io.Reader) func() error {
 // logf outputs a formatted log message to both stderr and an SSH client.
 func (s *sshServer) logf(session ssh.Session, format string, v ...interface{}) {
 	msg := fmt.Sprintf(format, v...)
-	s.ll.Printf("%s: %s", session.RemoteAddr(), msg)
+	s.ll.Printf("%s: %s", addrString(session.RemoteAddr()), msg)
 	fmt.Fprintf(session, "consrv> %s\n", msg)
+}
+
+// addrString prints a friendly string for a net.Addr.
+func addrString(addr net.Addr) string {
+	// For TCP connections just show the IP address in logs. Otherwise print the
+	// entire remote address.
+	if ta, ok := addr.(*net.TCPAddr); ok {
+		return ta.IP.String()
+	}
+
+	return addr.String()
 }

@@ -25,6 +25,9 @@ import (
 type identities struct {
 	perDevice map[string]map[string]struct{}
 	global    map[string]struct{}
+
+	// Maps fingerprint back to friendly name for logs.
+	toName map[string]string
 }
 
 // newIdentities creates an identities map from configuration.
@@ -34,6 +37,8 @@ func newIdentities(cfg *config, ll *log.Logger) *identities {
 	ids := identities{
 		perDevice: make(map[string]map[string]struct{}),
 		global:    make(map[string]struct{}),
+
+		toName: make(map[string]string),
 	}
 
 	if cfg == nil {
@@ -49,6 +54,7 @@ func newIdentities(cfg *config, ll *log.Logger) *identities {
 
 		known[id.Name] = f
 		ids.global[f] = struct{}{}
+		ids.toName[f] = id.Name
 	}
 
 	for _, d := range cfg.Devices {
@@ -83,17 +89,22 @@ func newIdentities(cfg *config, ll *log.Logger) *identities {
 }
 
 // authenticate determines if the specified user and public key combination are
-// able to authenticate against a device's configuration.
-func (ids *identities) authenticate(user string, key ssh.PublicKey) bool {
+// able to authenticate against a device's configuration. If so, the friendly
+// name of the identity is also returned for logging.
+func (ids *identities) authenticate(user string, key ssh.PublicKey) (string, bool) {
 	f := gossh.FingerprintSHA256(key)
 
 	if pd, ok := ids.perDevice[user]; ok {
 		// This device only allows specific identities.
-		_, ok := pd[f]
-		return ok
+		if _, ok := pd[f]; !ok {
+			return "", false
+		}
+	} else {
+		// All identities are permitted.
+		if _, ok := ids.global[f]; !ok {
+			return "", false
+		}
 	}
 
-	// All identities are permitted.
-	_, ok := ids.global[f]
-	return ok
+	return ids.toName[f], true
 }
