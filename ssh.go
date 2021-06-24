@@ -106,9 +106,11 @@ func (s *sshServer) handle(session ssh.Session) {
 	ctx, cancel := context.WithCancel(session.Context())
 	defer cancel()
 
-	// Create a new io.Reader handle from the mux for this client, so it
-	// will receive the same output as other clients for the duration of its
-	// session.
+	// Create a new io.Reader handle from the mux for this client, so it will
+	// receive the same output as other clients for the duration of its session.
+	//
+	// We can't use the logf helper beyond this point because we don't want to
+	// print any further information to the SSH session.
 	r := mux.m.Attach(ctx)
 
 	var eg errgroup.Group
@@ -116,13 +118,12 @@ func (s *sshServer) handle(session ssh.Session) {
 	eg.Go(eofCopy(ctx, session, r))
 
 	if err := eg.Wait(); err != nil {
-		s.ll.Printf("error proxying SSH/serial for %s: %v", session.RemoteAddr(), err)
+		// TODO(mdlayher): re-initialize serial on error? I've had to restart
+		// consrv once due to I/O errors on one device.
+		s.ll.Printf("%s: error proxying SSH/serial: %v", addrString(session.RemoteAddr()), err)
 	}
 
 	_ = session.Exit(0)
-
-	// We can't use the logf helper because we don't want to print this
-	// information to the SSH session.
 	s.ll.Printf("%s: closed serial connection %s", addrString(session.RemoteAddr()), mux)
 }
 
