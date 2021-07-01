@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -96,20 +97,82 @@ func (d *muxDevice) Close() error {
 // An fs abstracts filesystem operations. Most callers should use newFS to
 // construct an fs that operates on the real filesystem.
 type fs struct {
+	serialToDevice map[string]string
+
 	glob     func(pattern string) ([]string, error)
 	readFile func(file string) ([]byte, error)
 	openPort func(cfg *serial.Config) (io.ReadWriteCloser, error)
 }
 
 // newFS creates a fs that operates on the real filesystem.
-func newFS() *fs {
-	return &fs{
+func newFS(ll *log.Logger) (*fs, error) {
+	fs := &fs{
 		glob:     filepath.Glob,
 		readFile: ioutil.ReadFile,
 		openPort: func(cfg *serial.Config) (io.ReadWriteCloser, error) {
 			return serial.OpenPort(cfg)
 		},
 	}
+
+	return fs, fs.init(ll)
+}
+
+// init initializes a fs by enumerating the available devices and logging them
+// so the user may more easily configure them.
+func (fs *fs) init(ll *log.Logger) error {
+	fs.serialToDevice = make(map[string]string)
+	eds, err := fs.enumerate()
+	if err != nil {
+		return err
+	}
+
+	for _, ed := range eds {
+		ll.Printf("found device: path: %q, serial: %q", ed.device, ed.serial)
+	}
+
+	return nil
+}
+
+// An enumerated device is a device found in the filesystem.
+type enumeratedDevice struct {
+	device, serial string
+}
+
+// enumerate enumerates all available serial devices from the filesystem.
+func (fs *fs) enumerate() ([]enumeratedDevice, error) {
+	if fs.glob == nil {
+		// No glob function, can't enumerate devices.
+		return nil, nil
+	}
+
+	matches, err := fs.glob("/dev/ttyUSB*")
+	if err != nil {
+		return nil, err
+	}
+
+	var eds []enumeratedDevice
+	for _, m := range matches {
+		// filepath.Join would clean up the final path segment, so use
+		// concatentation there instead.
+		b, err := fs.readFile(filepath.Join("/sys/class/tty/", filepath.Base(m)) + "/device/../../serial")
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+
+			return nil, err
+		}
+
+		serial := strings.TrimSpace(string(b))
+		eds = append(eds, enumeratedDevice{
+			device: m,
+			serial: serial,
+		})
+
+		fs.serialToDevice[serial] = m
+	}
+
+	return eds, nil
 }
 
 // openSerial opens a serial port and instruments it with metrics.
@@ -117,9 +180,9 @@ func (fs *fs) openSerial(d *rawDevice, reads, writes metricslite.Counter) (devic
 	if d.Serial != "" {
 		// If the caller specified a serial number, use it to look up the
 		// device's path.
-		dev, err := fs.findttyUSBSerial(d.Serial)
-		if err != nil {
-			return nil, err
+		dev, ok := fs.serialToDevice[d.Serial]
+		if !ok {
+			return nil, os.ErrNotExist
 		}
 
 		d.Device = dev
@@ -143,31 +206,4 @@ func (fs *fs) openSerial(d *rawDevice, reads, writes metricslite.Counter) (devic
 		reads:  reads,
 		writes: writes,
 	}, nil
-}
-
-// findttyUSBSerial looks up a device's path by its serial string.
-func (fs *fs) findttyUSBSerial(serial string) (string, error) {
-	matches, err := fs.glob("/dev/ttyUSB*")
-	if err != nil {
-		return "", err
-	}
-
-	for _, m := range matches {
-		// filepath.Join would clean up the final path segment, so use
-		// concatentation there instead.
-		b, err := fs.readFile(filepath.Join("/sys/class/tty/", filepath.Base(m)) + "/device/../../serial")
-		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-
-			return "", err
-		}
-
-		if strings.TrimSpace(string(b)) == serial {
-			return m, nil
-		}
-	}
-
-	return "", fmt.Errorf("could not find device with serial %q: %w", serial, os.ErrNotExist)
 }

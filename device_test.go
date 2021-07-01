@@ -16,6 +16,7 @@ package main
 import (
 	"errors"
 	"io"
+	"log"
 	"os"
 	"strings"
 	"testing"
@@ -127,6 +128,10 @@ func Test_fs_openSerial(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if err := tt.fs.init(log.Default()); err != nil {
+				t.Fatalf("failed to init fs: %v", err)
+			}
+
 			d, err := tt.fs.openSerial(tt.raw, nil, nil)
 			if tt.ok && err != nil {
 				t.Fatalf("failed to open serial: %v", err)

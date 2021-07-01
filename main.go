@@ -75,14 +75,18 @@ func main() {
 	// Create device mappings from the configuration file and open the serial
 	// devices for the duration of the program's run.
 	devices := make(map[string]*muxDevice, len(cfg.Devices))
-	fs := newFS()
+	fs, err := newFS(ll)
+	if err != nil {
+		ll.Fatalf("failed to open filesystem: %v", err)
+	}
+
 	for _, d := range cfg.Devices {
 		dev, err := fs.openSerial(&d, mm.deviceReadBytes, mm.deviceWriteBytes)
 		if err != nil {
 			ll.Fatalf("failed to add device %q: %v", d.Name, err)
 		}
 
-		ll.Printf("added device %s", dev)
+		ll.Printf("configured device %s", dev)
 
 		devices[d.Name] = newMuxDevice(dev)
 		mm.deviceInfo(1.0, d.Name, d.Device, d.Serial, strconv.Itoa(d.Baud))
