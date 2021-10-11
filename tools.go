@@ -1,4 +1,4 @@
-// Copyright 2020 Matt Layher and Michael Stapelberg
+// Copyright 2021 Matt Layher
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -11,21 +11,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !gokrazy
-// +build !gokrazy
+//go:build tools
+// +build tools
 
+// This file is used to pin static analysis tool versions.
 package main
 
-import "flag"
-
-// filePaths provides flag configured paths for non-gokrazy systems.
-func filePaths() (string, string) {
-	var (
-		c = flag.String("c", "consrv.toml", "path to consrv.toml configuration file")
-		k = flag.String("k", "host_key", "path to OpenSSH format host key file")
-	)
-
-	flag.Parse()
-
-	return *c, *k
-}
+import _ "honnef.co/go/tools/cmd/staticcheck"
