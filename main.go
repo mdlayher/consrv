@@ -28,6 +28,7 @@ import (
 
 	"github.com/mdlayher/metricslite"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/sync/errgroup"
 )
@@ -65,9 +66,9 @@ func main() {
 	// Set up Prometheus metrics for the server.
 	reg := prometheus.NewPedanticRegistry()
 	reg.MustRegister(
-		prometheus.NewBuildInfoCollector(),
-		prometheus.NewGoCollector(),
-		prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}),
+		collectors.NewBuildInfoCollector(),
+		collectors.NewGoCollector(),
+		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 	)
 
 	mm := newMetrics(metricslite.NewPrometheus(reg))
