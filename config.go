@@ -60,7 +60,7 @@ type rawIdentity struct {
 // parseConfig parses a TOML configuration file into a config.
 func parseConfig(r io.Reader) (*config, error) {
 	var f file
-	md, err := toml.DecodeReader(r, &f)
+	md, err := toml.NewDecoder(r).Decode(&f)
 	if err != nil {
 		return nil, err
 	}
