@@ -29,7 +29,7 @@ import (
 // A device is a handle to a console device.
 type device interface {
 	io.ReadWriteCloser
-	String() string
+	fmt.Stringer
 }
 
 var _ device = &serialDevice{}

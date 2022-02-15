@@ -140,14 +140,14 @@ func Test_fs_openSerial(t *testing.T) {
 				t.Fatalf("expected is not exist, but got: %v", err)
 			}
 
-			if diff := cmp.Diff(tt.want, d, cmp.Comparer(compareDevices)); diff != "" {
+			if diff := cmp.Diff(tt.want, d, cmp.Comparer(devicesEqual)); diff != "" {
 				t.Fatalf("unexpected device (-want +got):\n%s", diff)
 			}
 		})
 	}
 }
 
-func compareDevices(x, y device) bool {
+func devicesEqual(x, y device) bool {
 	if x == nil || y == nil {
 		return false
 	}

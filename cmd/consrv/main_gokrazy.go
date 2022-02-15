@@ -17,6 +17,6 @@
 package main
 
 // filePaths provides hardcoded /perm paths on gokrazy.
-func filePaths() (cfg string, hostKey string) {
+func filePaths() (cfg, hostKey string) {
 	return "/perm/consrv/consrv.toml", "/perm/consrv/host_key"
 }

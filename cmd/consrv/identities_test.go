@@ -18,7 +18,7 @@ import (
 	"log"
 	"testing"
 
-	gossh "golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh"
 )
 
 const (
@@ -29,7 +29,7 @@ const (
 
 type idPair struct {
 	User string
-	Key  gossh.PublicKey
+	Key  ssh.PublicKey
 }
 
 func Test_identities(t *testing.T) {
