@@ -17,7 +17,6 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -58,7 +57,7 @@ func main() {
 	}
 	_ = f.Close()
 
-	hostKey, err := ioutil.ReadFile(keyFile)
+	hostKey, err := os.ReadFile(keyFile)
 	if err != nil {
 		ll.Fatalf("failed to read SSH host key: %v", err)
 	}
@@ -119,39 +118,48 @@ func main() {
 		return nil
 	})
 
-	eg.Go(func() error {
-		// TODO: move to configuration file, enabling and disabling of
-		// Prometheus and/or pprof handlers.
-		//
-		// Also consider
-		// https://godoc.org/github.com/gokrazy/gokrazy#PrivateInterfaceAddrs
-		// when running on gokrazy.
-		const addr = ":9288"
+	// Enable debug server if an address is set.
+	if cfg.Debug.Address != "" {
+		eg.Go(func() error {
+			if err := serveDebug(cfg.Debug, reg, ll); err != nil {
+				return fmt.Errorf("failed to serve debug HTTP: %v", err)
+			}
 
-		mux := http.NewServeMux()
+			return nil
+		})
+	}
+
+	if err := eg.Wait(); err != nil {
+		ll.Fatalf("failed to run: %v", err)
+	}
+}
+
+// serveDebug starts the HTTP debug server with the input configuration.
+func serveDebug(d debug, reg *prometheus.Registry, ll *log.Logger) error {
+	// TODO(mdlayher): consider
+	// https://godoc.org/github.com/gokrazy/gokrazy#PrivateInterfaceAddrs when
+	// running on gokrazy.
+	mux := http.NewServeMux()
+
+	if d.Prometheus {
 		mux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
+	}
+
+	if d.PProf {
 		mux.HandleFunc("/debug/pprof/", pprof.Index)
 		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
 		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
 		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
-
-		ll.Printf("starting HTTP debug server on %q", addr)
-
-		s := &http.Server{
-			Addr:        addr,
-			ReadTimeout: 1 * time.Second,
-			Handler:     mux,
-		}
-
-		if err := s.ListenAndServe(); err != nil {
-			return fmt.Errorf("failed to serve HTTP: %v", err)
-		}
-
-		return nil
-	})
-
-	if err := eg.Wait(); err != nil {
-		ll.Fatalf("failed to run: %v", err)
 	}
+
+	ll.Printf("starting HTTP debug server on %q", d.Address)
+
+	s := &http.Server{
+		Addr:        d.Address,
+		ReadTimeout: 1 * time.Second,
+		Handler:     mux,
+	}
+
+	return s.ListenAndServe()
 }

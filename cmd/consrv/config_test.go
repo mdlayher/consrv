@@ -142,6 +142,22 @@ func Test_parseConfig(t *testing.T) {
 			`,
 		},
 		{
+			name: "bad debug address",
+			s: `
+			[[devices]]
+			name = "server"
+			device = "/dev/ttyUSB0"
+			baud = 115200
+
+			[[identities]]
+			name = "ed25519"
+			public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJ6PAHCvJTosPqBppE6lmjjRt9Qlcisqx+DXt7jIbLba test ed25519"
+
+			[debug]
+			address = "foo"
+			`,
+		},
+		{
 			name: "OK",
 			s: `
 			[[devices]]
@@ -162,6 +178,11 @@ func Test_parseConfig(t *testing.T) {
 			[[identities]]
 			name = "rsa"
 			public_key = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDDkvg9+NTySctVaMkbZGwTRIUiQSo4crGWQPeFTi/XM3KhcUY+WduwHChJX1h03/DKJps8wtHUn3LmUKFR4BoJEgt8Od+L6ey5sev4lvPa2wDc5HJfervgCnVt9aomdFqeZUe6g4BDdPLUGbzT3T+A+08ocXy/eVv9Kke7Ka6GslJQQ5TBjW0AbPhxu6QmoZDb0tiWf9CwyVpiox5+vW7E+O6U1QOKT45Ellc2smHSAcI1gUDborS0GhFSso9SagMxcWNbZf8920DeaLs5tb8uwKfWKqHJfkY+VK3QuufpWZM3BJTPa0PePd75NRra2BOV4LDwGlLrZjOCULlYawDlDOIm6rpC3QV7juHTFWjS8ImvbsyEWZSE9N6klDMc23Zl9vhqJcG4U9LVAv2QMcr8aXBnmSo49rkd7/H6yHZgWqmrAijloZkiwsTbofT+lQx3JLEagk1rd8rmCp4F7WeUShvvmTq0tyPDutIhd1TXwLB0gyFObCDgb3CrXPtsACc= test RSA"
+
+			[debug]
+			address = "localhost:9288"
+			prometheus = true
+			pprof = true
 			`,
 			c: &config{
 				Devices: []rawDevice{
@@ -186,6 +207,11 @@ func Test_parseConfig(t *testing.T) {
 						Name:      "rsa",
 						PublicKey: mustKey("ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDDkvg9+NTySctVaMkbZGwTRIUiQSo4crGWQPeFTi/XM3KhcUY+WduwHChJX1h03/DKJps8wtHUn3LmUKFR4BoJEgt8Od+L6ey5sev4lvPa2wDc5HJfervgCnVt9aomdFqeZUe6g4BDdPLUGbzT3T+A+08ocXy/eVv9Kke7Ka6GslJQQ5TBjW0AbPhxu6QmoZDb0tiWf9CwyVpiox5+vW7E+O6U1QOKT45Ellc2smHSAcI1gUDborS0GhFSso9SagMxcWNbZf8920DeaLs5tb8uwKfWKqHJfkY+VK3QuufpWZM3BJTPa0PePd75NRra2BOV4LDwGlLrZjOCULlYawDlDOIm6rpC3QV7juHTFWjS8ImvbsyEWZSE9N6klDMc23Zl9vhqJcG4U9LVAv2QMcr8aXBnmSo49rkd7/H6yHZgWqmrAijloZkiwsTbofT+lQx3JLEagk1rd8rmCp4F7WeUShvvmTq0tyPDutIhd1TXwLB0gyFObCDgb3CrXPtsACc= test RSA"),
 					},
+				},
+				Debug: debug{
+					Address:    "localhost:9288",
+					Prometheus: true,
+					PProf:      true,
 				},
 			},
 			ok: true,

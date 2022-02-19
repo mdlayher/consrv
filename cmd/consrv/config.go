@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 
 	"github.com/BurntSushi/toml"
 	"github.com/gliderlabs/ssh"
@@ -28,6 +29,7 @@ import (
 type config struct {
 	Devices    []rawDevice
 	Identities []identity
+	Debug      debug
 }
 
 // An identity is a processed identity configuration.
@@ -38,8 +40,9 @@ type identity struct {
 
 // file is the raw top-level configuration file representation.
 type file struct {
-	Devices    []rawDevice
-	Identities []rawIdentity
+	Devices    []rawDevice   `toml:"devices"`
+	Identities []rawIdentity `toml:"identities"`
+	Debug      debug         `toml:"debug"`
 }
 
 // A rawDevice is a raw device configuration.
@@ -55,6 +58,13 @@ type rawDevice struct {
 type rawIdentity struct {
 	Name      string `toml:"name"`
 	PublicKey string `toml:"public_key"`
+}
+
+// debug contains consrv debug configuration.
+type debug struct {
+	Address    string `toml:"address"`
+	Prometheus bool   `toml:"prometheus"`
+	PProf      bool   `toml:"pprof"`
 }
 
 // parseConfig parses a TOML configuration file into a config.
@@ -122,8 +132,16 @@ func parseConfig(r io.Reader) (*config, error) {
 		}
 	}
 
+	// Validate debug configuration if set.
+	if f.Debug.Address != "" {
+		if _, err := net.ResolveTCPAddr("tcp", f.Debug.Address); err != nil {
+			return nil, fmt.Errorf("failed to parse debug address: %v", err)
+		}
+	}
+
 	return &config{
 		Devices:    f.Devices,
 		Identities: ids,
+		Debug:      f.Debug,
 	}, nil
 }

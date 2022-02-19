@@ -87,6 +87,15 @@ baud = 115200
 [[identities]]
 name = "mdlayher"
 public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIN5i5d0mRKAf02m+ju+I1KrAYw3Ny2IHXy88mgyragBN Matt Layher (mdlayher@gmail.com)"
+
+# Enable or disable the debug HTTP server for facilities such as Prometheus
+# metrics and pprof support.
+#
+# Warning: do not expose pprof on an untrusted network!
+[debug]
+address = "localhost:9288"
+prometheus = true
+pprof = false
 ```
 
 Now you can log in to either device's serial console over SSH using port 2222 on
