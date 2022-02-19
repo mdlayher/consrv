@@ -27,9 +27,15 @@ import (
 
 // A config is the consrv configuration.
 type config struct {
+	Server     server
 	Devices    []rawDevice
 	Identities []identity
 	Debug      debug
+}
+
+// server contains consrv SSH server configuration.
+type server struct {
+	Address string `toml:"address"`
 }
 
 // An identity is a processed identity configuration.
@@ -40,6 +46,7 @@ type identity struct {
 
 // file is the raw top-level configuration file representation.
 type file struct {
+	Server     server        `toml:"server"`
 	Devices    []rawDevice   `toml:"devices"`
 	Identities []rawIdentity `toml:"identities"`
 	Debug      debug         `toml:"debug"`
@@ -67,6 +74,9 @@ type debug struct {
 	PProf      bool   `toml:"pprof"`
 }
 
+// defaultSSH is the SSH server address used if no server address is specified.
+const defaultSSH = ":2222"
+
 // parseConfig parses a TOML configuration file into a config.
 func parseConfig(r io.Reader) (*config, error) {
 	var f file
@@ -84,6 +94,16 @@ func parseConfig(r io.Reader) (*config, error) {
 	}
 	if len(f.Identities) == 0 {
 		return nil, errors.New("no configured identities")
+	}
+
+	if f.Server.Address != "" {
+		// Validate the configured SSH server address.
+		if _, err := net.ResolveTCPAddr("tcp", f.Server.Address); err != nil {
+			return nil, fmt.Errorf("failed to parse SSH server address: %v", err)
+		}
+	} else {
+		// Use the default.
+		f.Server.Address = defaultSSH
 	}
 
 	// Track the identities found so they can be matched against devices which
@@ -135,11 +155,12 @@ func parseConfig(r io.Reader) (*config, error) {
 	// Validate debug configuration if set.
 	if f.Debug.Address != "" {
 		if _, err := net.ResolveTCPAddr("tcp", f.Debug.Address); err != nil {
-			return nil, fmt.Errorf("failed to parse debug address: %v", err)
+			return nil, fmt.Errorf("failed to parse debug HTTP server address: %v", err)
 		}
 	}
 
 	return &config{
+		Server:     f.Server,
 		Devices:    f.Devices,
 		Identities: ids,
 		Debug:      f.Debug,

@@ -63,6 +63,11 @@ and SSH public key identities which can be used to access the devices. Password
 authentication is not supported. For example:
 
 ```toml
+# Configure the SSH server listener. If no configuration is specified, consrv
+# binds the SSH server to ":2222" by default.
+[server]
+address = ":2222"
+
 # Configure one or more USB to serial devices with friendly names which are used
 # as the SSH username to access a device's serial console. You must specify either
 # "device" as the path to the device or "serial" to look up the device's path

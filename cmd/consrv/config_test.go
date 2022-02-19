@@ -53,6 +53,13 @@ func Test_parseConfig(t *testing.T) {
 			`,
 		},
 		{
+			name: "bad SSH server address",
+			s: `
+			[server]
+			address = "foo"
+			`,
+		},
+		{
 			name: "bad identity name",
 			s: `
 			[[devices]]
@@ -185,6 +192,7 @@ func Test_parseConfig(t *testing.T) {
 			pprof = true
 			`,
 			c: &config{
+				Server: server{Address: ":2222"},
 				Devices: []rawDevice{
 					{
 						Name:       "server",

@@ -92,9 +92,7 @@ func main() {
 		mm.deviceInfo(1.0, d.Name, d.Device, d.Serial, strconv.Itoa(d.Baud))
 	}
 
-	// Start the SSH server and configure the handler.
-	// TODO: make configurable.
-
+	// Start the SSH server.
 	srv, err := newSSHServer(hostKey, devices, newIdentities(cfg, ll), ll, mm)
 	if err != nil {
 		ll.Fatalf("failed to create SSH server: %v", err)
@@ -103,14 +101,13 @@ func main() {
 	var eg errgroup.Group
 
 	eg.Go(func() error {
-		const addr = ":2222"
-		l, err := net.Listen("tcp", addr)
+		l, err := net.Listen("tcp", cfg.Server.Address)
 		if err != nil {
 			return fmt.Errorf("failed to listen for SSH: %v", err)
 		}
 		defer l.Close()
 
-		ll.Printf("starting SSH server on %q", addr)
+		ll.Printf("starting SSH server on %q", cfg.Server.Address)
 		if err := srv.Serve(l); err != nil {
 			return fmt.Errorf("failed to serve SSH: %v", err)
 		}
