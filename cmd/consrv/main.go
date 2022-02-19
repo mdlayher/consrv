@@ -153,7 +153,8 @@ func serveDebug(d debug, reg *prometheus.Registry, ll *log.Logger) error {
 		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 	}
 
-	ll.Printf("starting HTTP debug server on %q", d.Address)
+	ll.Printf("starting HTTP debug server on %q [prometheus: %t, pprof: %t]",
+		d.Address, d.Prometheus, d.PProf)
 
 	s := &http.Server{
 		Addr:        d.Address,
