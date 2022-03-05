@@ -57,6 +57,15 @@ func Test_parseConfig(t *testing.T) {
 			s: `
 			[server]
 			address = "foo"
+
+			[[devices]]
+			name = "foo"
+			device = "/dev/ttyUSB0"
+			baud = 115200
+
+			[[identities]]
+			name = "ed25519"
+			public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJ6PAHCvJTosPqBppE6lmjjRt9Qlcisqx+DXt7jIbLba test ed25519"
 			`,
 		},
 		{
