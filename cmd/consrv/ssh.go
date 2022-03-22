@@ -144,7 +144,7 @@ func eofCopy(ctx context.Context, w io.Writer, r io.Reader) func() error {
 }
 
 // logf outputs a formatted log message to both stderr and an SSH client.
-func (s *sshServer) logf(session ssh.Session, format string, v ...interface{}) {
+func (s *sshServer) logf(session ssh.Session, format string, v ...any) {
 	msg := fmt.Sprintf(format, v...)
 	s.ll.Printf("%s: %s", addrString(session.RemoteAddr()), msg)
 	fmt.Fprintf(session, "consrv> %s\n", msg)

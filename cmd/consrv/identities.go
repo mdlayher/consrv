@@ -23,11 +23,23 @@ import (
 // An identities configures a set of identities which may be used for either
 // per-device or global authentication.
 type identities struct {
-	perDevice map[string]map[string]struct{}
-	global    map[string]struct{}
+	perDevice map[string]set[string]
+	global    set[string]
 
 	// Maps fingerprint back to friendly name for logs.
 	toName map[string]string
+}
+
+// A set is a unique set of T.
+type set[T comparable] map[T]struct{}
+
+// add adds t to the set.
+func (s set[T]) add(t T) { s[t] = struct{}{} }
+
+// has returns if t is in the set.
+func (s set[T]) has(t T) bool {
+	_, ok := s[t]
+	return ok
 }
 
 // newIdentities creates an identities map from configuration.
@@ -35,8 +47,8 @@ func newIdentities(cfg *config, ll *log.Logger) *identities {
 	// Set up relationships between devices and the identities which are
 	// authorized to access them.
 	ids := identities{
-		perDevice: make(map[string]map[string]struct{}),
-		global:    make(map[string]struct{}),
+		perDevice: make(map[string]set[string]),
+		global:    make(set[string]),
 
 		toName: make(map[string]string),
 	}
@@ -53,7 +65,7 @@ func newIdentities(cfg *config, ll *log.Logger) *identities {
 		ll.Printf("added identity %q: %s", id.Name, f)
 
 		known[id.Name] = f
-		ids.global[f] = struct{}{}
+		ids.global.add(f)
 		ids.toName[f] = id.Name
 	}
 
@@ -66,7 +78,7 @@ func newIdentities(cfg *config, ll *log.Logger) *identities {
 		}
 
 		if ids.perDevice[d.Name] == nil {
-			ids.perDevice[d.Name] = make(map[string]struct{})
+			ids.perDevice[d.Name] = make(set[string])
 		}
 
 		for _, id := range d.Identities {
@@ -81,7 +93,7 @@ func newIdentities(cfg *config, ll *log.Logger) *identities {
 			// This device will only accept authentication for a specific set
 			// of identities.
 			ll.Printf("identity %q configured for device %q", id, d.Name)
-			ids.perDevice[d.Name][f] = struct{}{}
+			ids.perDevice[d.Name].add(f)
 		}
 	}
 
@@ -96,12 +108,12 @@ func (ids *identities) authenticate(user string, key ssh.PublicKey) (string, boo
 
 	if pd, ok := ids.perDevice[user]; ok {
 		// This device only allows specific identities.
-		if _, ok := pd[f]; !ok {
+		if !pd.has(f) {
 			return "", false
 		}
 	} else {
 		// All identities are permitted.
-		if _, ok := ids.global[f]; !ok {
+		if !ids.global.has(f) {
 			return "", false
 		}
 	}
