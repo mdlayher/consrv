@@ -32,8 +32,6 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-// WIP WIP WIP, there's a lot more to do!
-//
 // TODO:
 //  - capture and inspect/alert on kernel panics
 //  - magic sysrq support
@@ -133,9 +131,6 @@ func main() {
 
 // serveDebug starts the HTTP debug server with the input configuration.
 func serveDebug(d debug, reg *prometheus.Registry, ll *log.Logger) error {
-	// TODO(mdlayher): consider
-	// https://godoc.org/github.com/gokrazy/gokrazy#PrivateInterfaceAddrs when
-	// running on gokrazy.
 	mux := http.NewServeMux()
 
 	if d.Prometheus {

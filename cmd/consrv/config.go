@@ -23,8 +23,6 @@ import (
 	"github.com/gliderlabs/ssh"
 )
 
-// TODO: allowing linking specific identities with specific devices.
-
 // A config is the consrv configuration.
 type config struct {
 	Server     server
