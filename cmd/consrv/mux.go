@@ -41,11 +41,6 @@ func newMux(r io.Reader) *mux {
 		b := make([]byte, 8192)
 		for {
 			n, err := r.Read(b)
-			if err == io.EOF || err == io.ErrClosedPipe {
-				// TODO: is this right, handle other errors?
-				return nil
-			}
-
 			m.doRead(b, n, err)
 			if err != nil {
 				// Further reads won't make any progress, so don't block Close
