@@ -15,7 +15,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -113,7 +112,26 @@ func (s *sshServer) handle(session ssh.Session) {
 	// print any further information to the SSH session.
 	r := mux.m.Attach(ctx)
 
-	var eg errgroup.Group
+	// eofCopy is a context-aware io.Copy that consumes io.EOF errors and is
+	// specialized for errgroup use.
+	eofCopy := func(ctx context.Context, w io.Writer, r io.Reader) func() error {
+		return func() error {
+			_, err := io.Copy(
+				contextio.NewWriter(ctx, w),
+				contextio.NewReader(ctx, r),
+			)
+
+			// End the SSH session to make the other eofCopy() goroutine return.
+			session.Exit(1)
+
+			// io.Copy treats io.EOF as expected and will return err=nil.
+			// Since we do not expect this io.Copy to return, ever, any
+			// return value can be treated as an error.
+			return fmt.Errorf("eofCopy: %v", err)
+		}
+	}
+
+	eg, ctx := errgroup.WithContext(ctx)
 	eg.Go(eofCopy(ctx, mux, session))
 	eg.Go(eofCopy(ctx, session, r))
 
@@ -125,22 +143,6 @@ func (s *sshServer) handle(session ssh.Session) {
 
 	_ = session.Exit(0)
 	s.ll.Printf("%s: closed serial connection %s", addrString(session.RemoteAddr()), mux)
-}
-
-// eofCopy is a context-aware io.Copy that consumes io.EOF errors and is
-// specialized for errgroup use.
-func eofCopy(ctx context.Context, w io.Writer, r io.Reader) func() error {
-	return func() error {
-		_, err := io.Copy(
-			contextio.NewWriter(ctx, w),
-			contextio.NewReader(ctx, r),
-		)
-		if err != nil && !errors.Is(err, io.EOF) {
-			return err
-		}
-
-		return nil
-	}
 }
 
 // logf outputs a formatted log message to both stderr and an SSH client.

@@ -107,9 +107,9 @@ func TestSSHSuccess(t *testing.T) {
 		t.Fatalf("failed to close session: %v", err)
 	}
 
-	var serr *ssh.ExitMissingError
+	var serr *ssh.ExitError
 	if err := s.Wait(); !errors.As(err, &serr) {
-		t.Fatalf("session did not return SSH missing exit error: %v", err)
+		t.Fatalf("session did not return SSH exit error: %v", err)
 	}
 
 	// Verify that stdin data was written to the device, and that the device
