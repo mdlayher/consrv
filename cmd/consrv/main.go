@@ -18,6 +18,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"flag"
 	"fmt"
 	"log"
 	"net"
@@ -41,26 +42,63 @@ import (
 //  - signal handler to block until all connections close?
 
 func main() {
-	// Config/host key paths are only configurable on non-gokrazy platforms.
-	cfgFile, keyFile := filePaths()
+	var (
+		c = flag.String("c", "consrv.toml", "path to consrv.toml configuration file")
+		k = flag.String("k", "host_key", "path to OpenSSH format host key file")
+	)
+
+	flag.Parse()
+
+	cfgFilePaths := []string{
+		*c,
+		"/etc/consrv/consrv.toml",
+		"/perm/consrv/consrv.toml",
+		"consrv.toml",
+	}
+	keyFilePaths := []string{
+		*k,
+		"/etc/consrv/host_key",
+		"/perm/consrv/host_key",
+		"host_key",
+	}
 
 	ll := log.New(os.Stderr, "", log.LstdFlags)
 
-	f, err := os.Open(cfgFile)
-	if err != nil {
-		ll.Fatalf("failed to open config file: %v", err)
-	}
-	defer f.Close()
+	var cfg *config
+	for _, cfgFile := range cfgFilePaths {
+		f, err := os.Open(cfgFile)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			ll.Fatalf("failed to open config file: %v", err)
+		}
+		defer f.Close()
+		ll.Printf("loading configuration from %s", cfgFile)
 
-	cfg, err := parseConfig(f)
-	if err != nil {
-		ll.Fatalf("failed to parse config: %v", err)
+		cfg, err = parseConfig(f)
+		if err != nil {
+			ll.Fatalf("failed to parse config: %v", err)
+		}
+		_ = f.Close()
+		break
 	}
-	_ = f.Close()
+	if cfg == nil {
+		ll.Fatalf("no config file could be opened")
+	}
 
-	hostKey, err := os.ReadFile(keyFile)
-	if err != nil {
-		ll.Fatalf("failed to read SSH host key: %v", err)
+	var hostKey []byte
+	for _, keyFile := range keyFilePaths {
+		var err error
+		hostKey, err = os.ReadFile(keyFile)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			ll.Fatalf("failed to read SSH host key: %v", err)
+		}
+		ll.Printf("loading host key from %s", keyFile)
+		break
 	}
 
 	// Set up Prometheus metrics for the server.
