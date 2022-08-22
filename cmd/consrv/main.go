@@ -18,7 +18,7 @@ package main
 import (
 	"bufio"
 	"context"
-  "flag"
+	"flag"
 	"fmt"
 	"log"
 	"net"
