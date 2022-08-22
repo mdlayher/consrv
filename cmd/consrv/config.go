@@ -52,11 +52,12 @@ type file struct {
 
 // A rawDevice is a raw device configuration.
 type rawDevice struct {
-	Name       string   `toml:"name"`
-	Device     string   `toml:"device"`
-	Serial     string   `toml:"serial"`
-	Baud       int      `toml:"baud"`
-	Identities []string `toml:"identities"`
+	Name        string   `toml:"name"`
+	Device      string   `toml:"device"`
+	Serial      string   `toml:"serial"`
+	Baud        int      `toml:"baud"`
+	Identities  []string `toml:"identities"`
+	LogToStdout bool     `toml:"logtostdout"`
 }
 
 // A rawIdentity is a raw identity configuration.

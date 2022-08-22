@@ -16,6 +16,8 @@
 package main
 
 import (
+	"bufio"
+	"context"
 	"fmt"
 	"log"
 	"net"
@@ -23,6 +25,7 @@ import (
 	"net/http/pprof"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/mdlayher/metricslite"
@@ -78,6 +81,14 @@ func main() {
 		ll.Fatalf("failed to open filesystem: %v", err)
 	}
 
+	numLogToStdout := 0
+	for _, d := range cfg.Devices {
+		if d.LogToStdout {
+			numLogToStdout++
+		}
+	}
+	var stdoutMu sync.Mutex
+
 	for _, d := range cfg.Devices {
 		dev, err := fs.openSerial(&d, mm.deviceReadBytes, mm.deviceWriteBytes)
 		if err != nil {
@@ -86,8 +97,30 @@ func main() {
 
 		ll.Printf("configured device %s", dev)
 
-		devices[d.Name] = newMuxDevice(dev)
+		mux := newMuxDevice(dev)
+		devices[d.Name] = mux
 		mm.deviceInfo(1.0, d.Name, d.Device, d.Serial, strconv.Itoa(d.Baud))
+		if d.LogToStdout {
+			ll.Printf("copying device [%s] to stdout", dev)
+			prefix := ""
+			if numLogToStdout > 1 {
+				// Disambiguate log messages when multiple devices are copied to
+				// stdout.
+				prefix = fmt.Sprintf("%s: ", d.Name)
+			}
+			rawReader := mux.m.Attach(context.Background())
+			go func() {
+				scanner := bufio.NewScanner(rawReader)
+				for scanner.Scan() {
+					stdoutMu.Lock()
+					fmt.Println(prefix + scanner.Text())
+					stdoutMu.Unlock()
+				}
+				if err := scanner.Err(); err != nil {
+					ll.Printf("copying serial to stdout: %v", err)
+				}
+			}()
+		}
 	}
 
 	// Start the SSH server.
