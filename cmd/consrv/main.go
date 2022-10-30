@@ -133,14 +133,13 @@ func main() {
 			ll.Fatalf("failed to add device %q: %v", d.Name, err)
 		}
 
-		ll.Printf("configured device %s", dev)
+		ll.Printf("configured device %s [log: %t]", dev, d.LogToStdout)
 
 		mux := newMuxDevice(dev)
 		devices[d.Name] = mux
 		mm.deviceInfo(1.0, d.Name, d.Device, d.Serial, strconv.Itoa(d.Baud))
 		if d.LogToStdout {
-			ll.Printf("copying device [%s] to stdout", dev)
-			prefix := ""
+			var prefix string
 			if numLogToStdout > 1 {
 				// Disambiguate log messages when multiple devices are copied to
 				// stdout.

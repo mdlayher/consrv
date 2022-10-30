@@ -121,13 +121,9 @@ func (s *sshServer) handle(session ssh.Session) {
 				contextio.NewReader(ctx, r),
 			)
 
-			// End the SSH session to make the other eofCopy() goroutine return.
-			session.Exit(1)
-
-			// io.Copy treats io.EOF as expected and will return err=nil.
-			// Since we do not expect this io.Copy to return, ever, any
-			// return value can be treated as an error.
-			return fmt.Errorf("eofCopy: %v", err)
+			// End the SSH session to make the other eofCopy goroutine return.
+			_ = session.Exit(1)
+			return err
 		}
 	}
 
