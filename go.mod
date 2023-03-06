@@ -11,7 +11,7 @@ require (
 	github.com/prometheus/client_golang v1.12.1
 	github.com/tarm/serial v0.0.0-20180830185346-98f6abe2eb07
 	golang.org/x/crypto v0.0.0-20220411220226-7b82a4e95df4
-	golang.org/x/net v0.0.0-20220412020605-290c469a71a5
+	golang.org/x/net v0.7.0
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 )
 
@@ -24,6 +24,6 @@ require (
 	github.com/prometheus/client_model v0.2.0 // indirect
 	github.com/prometheus/common v0.33.0 // indirect
 	github.com/prometheus/procfs v0.7.3 // indirect
-	golang.org/x/sys v0.0.0-20220412211240-33da011f77ad // indirect
+	golang.org/x/sys v0.5.0 // indirect
 	google.golang.org/protobuf v1.28.0 // indirect
 )
