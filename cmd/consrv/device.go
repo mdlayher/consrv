@@ -145,7 +145,41 @@ func (fs *fs) enumerate() ([]enumeratedDevice, error) {
 		return nil, nil
 	}
 
-	matches, err := fs.glob("/dev/ttyUSB*")
+	// Traverse known serial device patterns and attach a suffix where their
+	// serial number may be found.
+	sms := []serialMatch{
+		{
+			Pattern: "/dev/ttyUSB*",
+			Suffix:  "/device/../../serial",
+		},
+		{
+			Pattern: "/dev/ttyACM*",
+			Suffix:  "/device/../serial",
+		},
+	}
+
+	var devices []enumeratedDevice
+	for _, sm := range sms {
+		devs, err := fs.match(sm)
+		if err != nil {
+			return nil, err
+		}
+
+		devices = append(devices, devs...)
+	}
+
+	return devices, nil
+}
+
+// A serialMatch matches a serial device type by Pattern and reads its serial
+// number using Suffix.
+type serialMatch struct {
+	Pattern, Suffix string
+}
+
+// match walks a single serialMatch to enumerate devices.
+func (fs *fs) match(sm serialMatch) ([]enumeratedDevice, error) {
+	matches, err := fs.glob(sm.Pattern)
 	if err != nil {
 		return nil, err
 	}
@@ -154,7 +188,7 @@ func (fs *fs) enumerate() ([]enumeratedDevice, error) {
 	for _, m := range matches {
 		// filepath.Join would clean up the final path segment, so use
 		// concatentation there instead.
-		b, err := fs.readFile(filepath.Join("/sys/class/tty/", filepath.Base(m)) + "/device/../../serial")
+		b, err := fs.readFile(filepath.Join("/sys/class/tty/", filepath.Base(m)) + sm.Suffix)
 		if err != nil {
 			if os.IsNotExist(err) {
 				continue

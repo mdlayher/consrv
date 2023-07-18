@@ -15,10 +15,10 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"os"
-	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -76,50 +76,33 @@ func Test_fs_openSerial(t *testing.T) {
 			ok: true,
 		},
 		{
-			name: "OK device path",
-			fs: &fs{
-				openPort: func(_ *serial.Config) (io.ReadWriteCloser, error) {
-					return nil, nil
-				},
-			},
+			name: "OK devices USB serial",
+			fs:   testFS(),
 			raw: &rawDevice{
 				Name:   "foo",
-				Device: "/dev/ttyUSB0",
+				Serial: "1111",
 				Baud:   115200,
 			},
 			want: &serialDevice{
 				name:   "foo",
 				device: "/dev/ttyUSB0",
+				serial: "1111",
 				baud:   115200,
 			},
 			ok: true,
 		},
 		{
-			name: "OK device serial",
-			fs: &fs{
-				glob: func(_ string) ([]string, error) {
-					return []string{"/dev/ttyUSB0", "/dev/ttyUSB1"}, nil
-				},
-				readFile: func(file string) ([]byte, error) {
-					if strings.Contains(file, "ttyUSB0") {
-						return []byte("DEADBEEF"), nil
-					}
-
-					return nil, os.ErrNotExist
-				},
-				openPort: func(_ *serial.Config) (io.ReadWriteCloser, error) {
-					return nil, nil
-				},
-			},
+			name: "OK devices ACM serial",
+			fs:   testFS(),
 			raw: &rawDevice{
-				Name:   "foo",
-				Serial: "DEADBEEF",
+				Name:   "bar",
+				Serial: "3333",
 				Baud:   115200,
 			},
 			want: &serialDevice{
-				name:   "foo",
-				device: "/dev/ttyUSB0",
-				serial: "DEADBEEF",
+				name:   "bar",
+				device: "/dev/ttyACM0",
+				serial: "3333",
 				baud:   115200,
 			},
 			ok: true,
@@ -153,4 +136,35 @@ func devicesEqual(x, y device) bool {
 	}
 
 	return x.String() == y.String()
+}
+
+func testFS() *fs {
+	return &fs{
+		glob: func(pattern string) ([]string, error) {
+			switch pattern {
+			case "/dev/ttyUSB*":
+				return []string{"/dev/ttyUSB0", "/dev/ttyUSB1"}, nil
+			case "/dev/ttyACM*":
+				return []string{"/dev/ttyACM0"}, nil
+			default:
+				return nil, fmt.Errorf("glob: unhandled pattern: %q", pattern)
+			}
+		},
+		readFile: func(file string) ([]byte, error) {
+			switch file {
+			case "/sys/class/tty/ttyUSB0/device/../../serial":
+				return []byte("1111"), nil
+			case "/sys/class/tty/ttyUSB1/device/../../serial":
+				// Pretend this device doesn't have a serial number.
+				return nil, os.ErrNotExist
+			case "/sys/class/tty/ttyACM0/device/../serial":
+				return []byte("3333"), nil
+			default:
+				return nil, fmt.Errorf("readFile: unhandled file: %q", file)
+			}
+		},
+		openPort: func(_ *serial.Config) (io.ReadWriteCloser, error) {
+			return nil, nil
+		},
+	}
 }
