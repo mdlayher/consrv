@@ -43,8 +43,9 @@ import (
 
 func main() {
 	var (
-		c = flag.String("c", "consrv.toml", "path to consrv.toml configuration file")
-		k = flag.String("k", "host_key", "path to OpenSSH format host key file")
+		c            = flag.String("c", "consrv.toml", "path to consrv.toml configuration file")
+		k            = flag.String("k", "host_key", "path to OpenSSH format host key file")
+		mustPrivdrop = flag.Bool("experimental-drop-privileges", false, "[EXPERIMENTAL] run as an unprivileged process and chroot to an empty dir")
 	)
 
 	flag.Parse()
@@ -160,8 +161,15 @@ func main() {
 		}
 	}
 
+	privdrop := newPrivdropCond()
+
 	// Start the SSH server.
-	srv, err := newSSHServer(hostKey, devices, newIdentities(cfg, ll), ll, mm)
+	sshListener, err := net.Listen("tcp", cfg.Server.Address)
+	if err != nil {
+		ll.Fatalf("failed to listen for SSH server: %v", err)
+	}
+
+	sshSrv, err := newSSHServer(hostKey, devices, newIdentities(cfg, ll), ll, mm)
 	if err != nil {
 		ll.Fatalf("failed to create SSH server: %v", err)
 	}
@@ -169,14 +177,16 @@ func main() {
 	var eg errgroup.Group
 
 	eg.Go(func() error {
-		l, err := net.Listen("tcp", cfg.Server.Address)
-		if err != nil {
-			return fmt.Errorf("failed to listen for SSH: %v", err)
-		}
-		defer l.Close()
+		defer sshListener.Close()
 
-		ll.Printf("starting SSH server on %q", cfg.Server.Address)
-		if err := srv.Serve(l); err != nil {
+		if *mustPrivdrop {
+			ll.Printf("SSH server waiting for privdrop")
+			waitForCond(privdrop)
+		}
+
+		ll.Printf("SSH server starting")
+		ll.Printf("starting SSH server on %q", sshListener.Addr())
+		if err := sshSrv.Serve(sshListener); err != nil {
 			return fmt.Errorf("failed to serve SSH: %v", err)
 		}
 
@@ -185,13 +195,29 @@ func main() {
 
 	// Enable debug server if an address is set.
 	if cfg.Debug.Address != "" {
+		debugListener, err := net.Listen("tcp", cfg.Debug.Address)
+		if err != nil {
+			ll.Fatalf("failed to listen for HTTP debug server: %v", err)
+		}
+
 		eg.Go(func() error {
-			if err := serveDebug(cfg.Debug, reg, ll); err != nil {
+			defer debugListener.Close()
+
+			if *mustPrivdrop {
+				ll.Printf("debug HTTP waiting for privdrop")
+				waitForCond(privdrop)
+			}
+
+			if err := serveDebug(cfg.Debug, reg, debugListener, ll); err != nil {
 				return fmt.Errorf("failed to serve debug HTTP: %v", err)
 			}
 
 			return nil
 		})
+	}
+
+	if *mustPrivdrop {
+		dropPrivileges(privdrop, ll)
 	}
 
 	if err := eg.Wait(); err != nil {
@@ -200,7 +226,7 @@ func main() {
 }
 
 // serveDebug starts the HTTP debug server with the input configuration.
-func serveDebug(d debug, reg *prometheus.Registry, ll *log.Logger) error {
+func serveDebug(d debug, reg *prometheus.Registry, listener net.Listener, ll *log.Logger) error {
 	mux := http.NewServeMux()
 
 	if d.Prometheus {
@@ -224,5 +250,5 @@ func serveDebug(d debug, reg *prometheus.Registry, ll *log.Logger) error {
 		Handler:     mux,
 	}
 
-	return s.ListenAndServe()
+	return s.Serve(listener)
 }
