@@ -43,8 +43,9 @@ import (
 
 func main() {
 	var (
-		c = flag.String("c", "consrv.toml", "path to consrv.toml configuration file")
-		k = flag.String("k", "host_key", "path to OpenSSH format host key file")
+		c            = flag.String("c", "consrv.toml", "path to consrv.toml configuration file")
+		k            = flag.String("k", "host_key", "path to OpenSSH format host key file")
+		mustPrivdrop = flag.Bool("experimental-drop-privileges", false, "[EXPERIMENTAL] run as an unprivileged process and chroot to an empty dir")
 	)
 
 	flag.Parse()
@@ -160,33 +161,57 @@ func main() {
 		}
 	}
 
-	// Start the SSH server.
-	srv, err := newSSHServer(hostKey, devices, newIdentities(cfg, ll), ll, mm)
+	ids := newIdentities(cfg, ll)
+
+	// Start the SSH server and optional HTTP debug server.
+	sshl, err := net.Listen("tcp", cfg.Server.Address)
 	if err != nil {
-		ll.Fatalf("failed to create SSH server: %v", err)
+		ll.Fatalf("failed to listen for SSH server: %v", err)
+	}
+
+	var httpl net.Listener
+	if cfg.Debug.Address != "" {
+		l, err := net.Listen("tcp", cfg.Debug.Address)
+		if err != nil {
+			ll.Fatalf("failed to listen for HTTP debug server: %v", err)
+		}
+		httpl = l
+	}
+
+	if *mustPrivdrop {
+		// Experimental: drop privileges now that we're done reading
+		// configuration and opening possibly privileged TCP listeners.
+		info, err := dropPrivileges()
+		if err != nil {
+			ll.Fatalf("failed to drop privileges: %v", err)
+		}
+
+		ll.Printf("dropped privileges: chroot: %q, UID: %d GID: %d", info.Chroot, info.UID, info.GID)
 	}
 
 	var eg errgroup.Group
 
 	eg.Go(func() error {
-		l, err := net.Listen("tcp", cfg.Server.Address)
-		if err != nil {
-			return fmt.Errorf("failed to listen for SSH: %v", err)
-		}
-		defer l.Close()
+		defer sshl.Close()
 
-		ll.Printf("starting SSH server on %q", cfg.Server.Address)
-		if err := srv.Serve(l); err != nil {
+		srv, err := newSSHServer(hostKey, devices, ids, ll, mm)
+		if err != nil {
+			return fmt.Errorf("failed to create SSH server: %w", err)
+		}
+
+		ll.Printf("starting SSH server on %q", sshl.Addr())
+		if err := srv.Serve(sshl); err != nil {
 			return fmt.Errorf("failed to serve SSH: %v", err)
 		}
 
 		return nil
 	})
 
-	// Enable debug server if an address is set.
-	if cfg.Debug.Address != "" {
+	if httpl != nil {
 		eg.Go(func() error {
-			if err := serveDebug(cfg.Debug, reg, ll); err != nil {
+			defer httpl.Close()
+
+			if err := serveDebug(cfg.Debug, reg, httpl, ll); err != nil {
 				return fmt.Errorf("failed to serve debug HTTP: %v", err)
 			}
 
@@ -199,8 +224,14 @@ func main() {
 	}
 }
 
+// privilegesInfo contains information from dropping privileges.
+type privilegesInfo struct {
+	Chroot   string
+	UID, GID int
+}
+
 // serveDebug starts the HTTP debug server with the input configuration.
-func serveDebug(d debug, reg *prometheus.Registry, ll *log.Logger) error {
+func serveDebug(d debug, reg *prometheus.Registry, listener net.Listener, ll *log.Logger) error {
 	mux := http.NewServeMux()
 
 	if d.Prometheus {
@@ -224,5 +255,5 @@ func serveDebug(d debug, reg *prometheus.Registry, ll *log.Logger) error {
 		Handler:     mux,
 	}
 
-	return s.ListenAndServe()
+	return s.Serve(listener)
 }
