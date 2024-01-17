@@ -14,7 +14,7 @@
 package main
 
 import (
-	"io/ioutil"
+	"io"
 	"log"
 	"testing"
 
@@ -34,7 +34,7 @@ type idPair struct {
 
 func Test_identities(t *testing.T) {
 	// Discard all logs.
-	ll := log.New(ioutil.Discard, "", 0)
+	ll := log.New(io.Discard, "", 0)
 
 	tests := []struct {
 		name        string

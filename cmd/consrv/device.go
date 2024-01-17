@@ -16,7 +16,6 @@ package main
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -108,7 +107,7 @@ type fs struct {
 func newFS(ll *log.Logger) (*fs, error) {
 	fs := &fs{
 		glob:     filepath.Glob,
-		readFile: ioutil.ReadFile,
+		readFile: os.ReadFile,
 		openPort: func(cfg *serial.Config) (io.ReadWriteCloser, error) {
 			return serial.OpenPort(cfg)
 		},
