@@ -1,5 +1,11 @@
 # CHANGELOG
 
+# v1.2.1
+December 12, 2024
+
+- Bump dependencies for [CVE-2024-45337](https://github.com/advisories/GHSA-v778-237x-gjrc).
+  - See also https://github.com/golang/go/issues/70779.
+
 # v1.2.0
 January 17, 2024
 
