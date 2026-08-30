@@ -14,11 +14,13 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/mdlayher/metricslite"
@@ -96,7 +98,10 @@ func (d *muxDevice) Close() error {
 // An fs abstracts filesystem operations. Most callers should use newFS to
 // construct an fs that operates on the real filesystem.
 type fs struct {
-	serialToDevice map[string]string
+	// serialToDevices maps a USB serial number to one or more devices.
+	// Multi-port adapters expose several ports which share a single serial
+	// number, distinguished only by their USB interface numbers.
+	serialToDevices map[string][]enumeratedDevice
 
 	glob     func(pattern string) ([]string, error)
 	readFile func(file string) ([]byte, error)
@@ -119,14 +124,20 @@ func newFS(ll *log.Logger) (*fs, error) {
 // init initializes a fs by enumerating the available devices and logging them
 // so the user may more easily configure them.
 func (fs *fs) init(ll *log.Logger) error {
-	fs.serialToDevice = make(map[string]string)
+	fs.serialToDevices = make(map[string][]enumeratedDevice)
 	eds, err := fs.enumerate()
 	if err != nil {
 		return err
 	}
 
 	for _, ed := range eds {
-		ll.Printf("found device: path: %q, serial: %q", ed.device, ed.serial)
+		ll.Printf("found device: path: %q, serial: %q, interface: %d", ed.device, ed.serial, ed.iface)
+	}
+
+	for serial, devs := range fs.serialToDevices {
+		if len(devs) > 1 {
+			ll.Printf(`warning: %d devices share serial %q, set "interface" to select a specific port`, len(devs), serial)
+		}
 	}
 
 	return nil
@@ -135,6 +146,7 @@ func (fs *fs) init(ll *log.Logger) error {
 // An enumerated device is a device found in the filesystem.
 type enumeratedDevice struct {
 	device, serial string
+	iface          int
 }
 
 // enumerate enumerates all available serial devices from the filesystem.
@@ -144,16 +156,18 @@ func (fs *fs) enumerate() ([]enumeratedDevice, error) {
 		return nil, nil
 	}
 
-	// Traverse known serial device patterns and attach a suffix where their
-	// serial number may be found.
+	// Traverse known serial device patterns and attach suffixes where their
+	// serial and USB interface numbers may be found.
 	sms := []serialMatch{
 		{
-			Pattern: "/dev/ttyUSB*",
-			Suffix:  "/device/../../serial",
+			Pattern:     "/dev/ttyUSB*",
+			Suffix:      "/device/../../serial",
+			IfaceSuffix: "/device/../bInterfaceNumber",
 		},
 		{
-			Pattern: "/dev/ttyACM*",
-			Suffix:  "/device/../serial",
+			Pattern:     "/dev/ttyACM*",
+			Suffix:      "/device/../serial",
+			IfaceSuffix: "/device/bInterfaceNumber",
 		},
 	}
 
@@ -171,9 +185,9 @@ func (fs *fs) enumerate() ([]enumeratedDevice, error) {
 }
 
 // A serialMatch matches a serial device type by Pattern and reads its serial
-// number using Suffix.
+// number using Suffix and its USB interface number using IfaceSuffix.
 type serialMatch struct {
-	Pattern, Suffix string
+	Pattern, Suffix, IfaceSuffix string
 }
 
 // match walks a single serialMatch to enumerate devices.
@@ -187,7 +201,9 @@ func (fs *fs) match(sm serialMatch) ([]enumeratedDevice, error) {
 	for _, m := range matches {
 		// filepath.Join would clean up the final path segment, so use
 		// concatentation there instead.
-		b, err := fs.readFile(filepath.Join("/sys/class/tty/", filepath.Base(m)) + sm.Suffix)
+		base := filepath.Join("/sys/class/tty/", filepath.Base(m))
+
+		b, err := fs.readFile(base + sm.Suffix)
 		if err != nil {
 			if os.IsNotExist(err) {
 				continue
@@ -195,17 +211,80 @@ func (fs *fs) match(sm serialMatch) ([]enumeratedDevice, error) {
 
 			return nil, err
 		}
-
 		serial := strings.TrimSpace(string(b))
-		eds = append(eds, enumeratedDevice{
+
+		iface, err := fs.readIface(base + sm.IfaceSuffix)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read USB interface number for %q: %v", m, err)
+		}
+
+		ed := enumeratedDevice{
 			device: m,
 			serial: serial,
-		})
+			iface:  iface,
+		}
 
-		fs.serialToDevice[serial] = m
+		eds = append(eds, ed)
+		fs.serialToDevices[serial] = append(fs.serialToDevices[serial], ed)
 	}
 
 	return eds, nil
+}
+
+// readIface reads a USB interface number from file, assuming interface zero
+// for devices which do not expose one.
+func (fs *fs) readIface(file string) (int, error) {
+	b, err := fs.readFile(file)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+
+		return 0, err
+	}
+
+	// bInterfaceNumber is hexadecimal per the USB specification.
+	v, err := strconv.ParseUint(strings.TrimSpace(string(b)), 16, 8)
+	if err != nil {
+		return 0, err
+	}
+
+	return int(v), nil
+}
+
+// errAmbiguousSerial is returned when a serial number is shared by multiple
+// devices and no USB interface number was configured to select one of them.
+var errAmbiguousSerial = errors.New(`serial number is shared by multiple devices, set "interface" to select one`)
+
+// findSerial looks up a device's path by its configured serial number and
+// optional USB interface number, for multi-port adapters whose ports share a
+// single serial number.
+func (fs *fs) findSerial(d *rawDevice) (string, error) {
+	eds := fs.serialToDevices[d.Serial]
+	if len(eds) == 0 {
+		return "", os.ErrNotExist
+	}
+
+	if d.Interface == nil {
+		if len(eds) > 1 {
+			ifaces := make([]string, 0, len(eds))
+			for _, ed := range eds {
+				ifaces = append(ifaces, strconv.Itoa(ed.iface))
+			}
+
+			return "", fmt.Errorf("%w: found interfaces: %s", errAmbiguousSerial, strings.Join(ifaces, ", "))
+		}
+
+		return eds[0].device, nil
+	}
+
+	for _, ed := range eds {
+		if ed.iface == *d.Interface {
+			return ed.device, nil
+		}
+	}
+
+	return "", fmt.Errorf("no device with USB interface number %d: %w", *d.Interface, os.ErrNotExist)
 }
 
 // openSerial opens a serial port and instruments it with metrics.
@@ -213,9 +292,9 @@ func (fs *fs) openSerial(d *rawDevice, reads, writes metricslite.Counter) (devic
 	if d.Serial != "" {
 		// If the caller specified a serial number, use it to look up the
 		// device's path.
-		dev, ok := fs.serialToDevice[d.Serial]
-		if !ok {
-			return nil, os.ErrNotExist
+		dev, err := fs.findSerial(d)
+		if err != nil {
+			return nil, err
 		}
 
 		d.Device = dev

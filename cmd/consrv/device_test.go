@@ -31,6 +31,7 @@ func Test_fs_openSerial(t *testing.T) {
 		fs   *fs
 		raw  *rawDevice
 		want device
+		err  error
 		ok   bool
 	}{
 		{
@@ -107,6 +108,43 @@ func Test_fs_openSerial(t *testing.T) {
 			},
 			ok: true,
 		},
+		{
+			name: "ambiguous shared serial",
+			fs:   testFS(),
+			raw: &rawDevice{
+				Name:   "quad",
+				Serial: "9999",
+				Baud:   115200,
+			},
+			err: errAmbiguousSerial,
+		},
+		{
+			name: "no matching interface",
+			fs:   testFS(),
+			raw: &rawDevice{
+				Name:      "quad",
+				Serial:    "9999",
+				Interface: intPtr(7),
+				Baud:      115200,
+			},
+		},
+		{
+			name: "OK shared serial with interface",
+			fs:   testFS(),
+			raw: &rawDevice{
+				Name:      "quad2",
+				Serial:    "9999",
+				Interface: intPtr(2),
+				Baud:      115200,
+			},
+			want: &serialDevice{
+				name:   "quad2",
+				device: "/dev/ttyUSB4",
+				serial: "9999",
+				baud:   115200,
+			},
+			ok: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -119,8 +157,15 @@ func Test_fs_openSerial(t *testing.T) {
 			if tt.ok && err != nil {
 				t.Fatalf("failed to open serial: %v", err)
 			}
-			if !tt.ok && !errors.Is(err, os.ErrNotExist) {
-				t.Fatalf("expected is not exist, but got: %v", err)
+			if !tt.ok {
+				wantErr := tt.err
+				if wantErr == nil {
+					wantErr = os.ErrNotExist
+				}
+
+				if !errors.Is(err, wantErr) {
+					t.Fatalf("expected error %v, but got: %v", wantErr, err)
+				}
 			}
 
 			if diff := cmp.Diff(tt.want, d, cmp.Comparer(devicesEqual)); diff != "" {
@@ -138,12 +183,19 @@ func devicesEqual(x, y device) bool {
 	return x.String() == y.String()
 }
 
+func intPtr(i int) *int { return &i }
+
 func testFS() *fs {
 	return &fs{
 		glob: func(pattern string) ([]string, error) {
 			switch pattern {
 			case "/dev/ttyUSB*":
-				return []string{"/dev/ttyUSB0", "/dev/ttyUSB1"}, nil
+				return []string{
+					// A pair of single-port adapters followed by a multi-port
+					// adapter whose four ports share one serial number.
+					"/dev/ttyUSB0", "/dev/ttyUSB1",
+					"/dev/ttyUSB2", "/dev/ttyUSB3", "/dev/ttyUSB4", "/dev/ttyUSB5",
+				}, nil
 			case "/dev/ttyACM*":
 				return []string{"/dev/ttyACM0"}, nil
 			default:
@@ -157,8 +209,26 @@ func testFS() *fs {
 			case "/sys/class/tty/ttyUSB1/device/../../serial":
 				// Pretend this device doesn't have a serial number.
 				return nil, os.ErrNotExist
+			case "/sys/class/tty/ttyUSB2/device/../../serial",
+				"/sys/class/tty/ttyUSB3/device/../../serial",
+				"/sys/class/tty/ttyUSB4/device/../../serial",
+				"/sys/class/tty/ttyUSB5/device/../../serial":
+				return []byte("9999"), nil
+			case "/sys/class/tty/ttyUSB0/device/../bInterfaceNumber":
+				return []byte("00\n"), nil
+			case "/sys/class/tty/ttyUSB2/device/../bInterfaceNumber":
+				return []byte("00\n"), nil
+			case "/sys/class/tty/ttyUSB3/device/../bInterfaceNumber":
+				return []byte("01\n"), nil
+			case "/sys/class/tty/ttyUSB4/device/../bInterfaceNumber":
+				return []byte("02\n"), nil
+			case "/sys/class/tty/ttyUSB5/device/../bInterfaceNumber":
+				return []byte("03\n"), nil
 			case "/sys/class/tty/ttyACM0/device/../serial":
 				return []byte("3333"), nil
+			case "/sys/class/tty/ttyACM0/device/bInterfaceNumber":
+				// Pretend this device doesn't expose an interface number.
+				return nil, os.ErrNotExist
 			default:
 				return nil, fmt.Errorf("readFile: unhandled file: %q", file)
 			}

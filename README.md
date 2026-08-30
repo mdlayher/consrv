@@ -73,6 +73,11 @@ address = ":2222"
 # "device" as the path to the device or "serial" to look up the device's path
 # by the adapter's serial number (useful for machines with many connections).
 #
+# Multi-port adapters expose several ports which share a single serial number.
+# For those, also set "interface" to the port's USB interface number (0 is the
+# first port) to select a single port. consrv logs each device's serial and
+# interface number on startup.
+#
 # Optionally a list of identities which are allowed to access a device may be
 # provided on a per-device basis. If no identities key is configured, all
 # identities are allowed to access the device.
@@ -85,6 +90,12 @@ identities = ["mdlayher"]
 [[devices]]
 name = "desktop"
 device = "/dev/ttyUSB1"
+baud = 115200
+
+[[devices]]
+name = "router"
+serial = "FT000000"
+interface = 2
 baud = 115200
 
 # Configure one or more SSH public key identities which can authenticate against

@@ -55,6 +55,7 @@ type rawDevice struct {
 	Name        string   `toml:"name"`
 	Device      string   `toml:"device"`
 	Serial      string   `toml:"serial"`
+	Interface   *int     `toml:"interface"`
 	Baud        int      `toml:"baud"`
 	Identities  []string `toml:"identities"`
 	LogToStdout bool     `toml:"logtostdout"`
@@ -141,6 +142,18 @@ func parseConfig(r io.Reader) (*config, error) {
 		// Must have at least one identifying field present.
 		if d.Device == "" && d.Serial == "" {
 			return nil, fmt.Errorf("device %q must have a device path or serial", d.Name)
+		}
+
+		// An interface number selects one port of a multi-port adapter whose
+		// ports share a serial number, so it is only valid alongside one.
+		if d.Interface != nil {
+			if d.Serial == "" {
+				return nil, fmt.Errorf("device %q must have a serial to set an interface number", d.Name)
+			}
+
+			if *d.Interface < 0 || *d.Interface > 255 {
+				return nil, fmt.Errorf("device %q has invalid USB interface number %d", d.Name, *d.Interface)
+			}
 		}
 
 		// If the device has identities configured, those identities must exist.

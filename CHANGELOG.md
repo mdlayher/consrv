@@ -1,5 +1,15 @@
 # CHANGELOG
 
+# Unreleased
+
+- Support for matching one port of a multi-port USB to serial adapter (such as
+  a quad FTDI cable) whose ports all share a single serial number, using the
+  new optional `interface` device configuration key alongside `serial`.
+- Device enumeration now logs each device's USB interface number and warns
+  when multiple devices share a serial number. Configuring a shared serial
+  number without an `interface` key is now an error rather than silently
+  matching whichever port was enumerated last.
+
 # v1.2.1
 December 12, 2024
 

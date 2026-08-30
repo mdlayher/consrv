@@ -131,6 +131,34 @@ func Test_parseConfig(t *testing.T) {
 			`,
 		},
 		{
+			name: "bad device interface without serial",
+			s: `
+			[[devices]]
+			name = "foo"
+			device = "/dev/ttyUSB0"
+			interface = 1
+			baud = 115200
+
+			[[identities]]
+			name = "ed25519"
+			public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJ6PAHCvJTosPqBppE6lmjjRt9Qlcisqx+DXt7jIbLba test ed25519"
+			`,
+		},
+		{
+			name: "bad device interface number",
+			s: `
+			[[devices]]
+			name = "foo"
+			serial = "DEADBEEF"
+			interface = 256
+			baud = 115200
+
+			[[identities]]
+			name = "ed25519"
+			public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJ6PAHCvJTosPqBppE6lmjjRt9Qlcisqx+DXt7jIbLba test ed25519"
+			`,
+		},
+		{
 			name: "bad device baud rate",
 			s: `
 			[[devices]]
@@ -187,6 +215,12 @@ func Test_parseConfig(t *testing.T) {
 			serial = "DEADBEEF"
 			baud = 115200
 
+			[[devices]]
+			name = "quad0"
+			serial = "FT000000"
+			interface = 0
+			baud = 115200
+
 			[[identities]]
 			name = "ed25519"
 			public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJ6PAHCvJTosPqBppE6lmjjRt9Qlcisqx+DXt7jIbLba test ed25519"
@@ -213,6 +247,12 @@ func Test_parseConfig(t *testing.T) {
 						Name:   "desktop",
 						Serial: "DEADBEEF",
 						Baud:   115200,
+					},
+					{
+						Name:      "quad0",
+						Serial:    "FT000000",
+						Interface: intPtr(0),
+						Baud:      115200,
 					},
 				},
 				Identities: []identity{
