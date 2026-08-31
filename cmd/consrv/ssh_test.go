@@ -107,8 +107,13 @@ func TestSSHSuccess(t *testing.T) {
 		t.Fatalf("failed to close session: %v", err)
 	}
 
-	var serr *ssh.ExitError
-	if err := s.Wait(); !errors.As(err, &serr) {
+	// The forced close races the server sending its exit status: the client
+	// may see either an exit error or no exit status at all.
+	var (
+		serr *ssh.ExitError
+		merr *ssh.ExitMissingError
+	)
+	if err := s.Wait(); !errors.As(err, &serr) && !errors.As(err, &merr) {
 		t.Fatalf("session did not return SSH exit error: %v", err)
 	}
 

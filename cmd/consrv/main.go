@@ -182,6 +182,7 @@ func main() {
 		// Experimental: drop privileges now that we're done reading
 		// configuration and opening possibly privileged TCP listeners.
 		info, err := dropPrivileges()
+		//lint:ignore SA4023 the non-gokrazy dropPrivileges stub always returns an error
 		if err != nil {
 			ll.Fatalf("failed to drop privileges: %v", err)
 		}
