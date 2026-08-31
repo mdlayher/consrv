@@ -1,6 +1,7 @@
 # CHANGELOG
 
-# Unreleased
+# v1.3.0
+August 31, 2026
 
 - Support for matching one port of a multi-port USB to serial adapter (such as
   a quad FTDI cable) whose ports all share a single serial number, using the
@@ -9,6 +10,7 @@
   when multiple devices share a serial number. Configuring a shared serial
   number without an `interface` key is now an error rather than silently
   matching whichever port was enumerated last.
+- Updated to Go 1.27 and the latest versions of all dependencies.
 
 # v1.2.1
 December 12, 2024
