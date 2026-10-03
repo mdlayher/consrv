@@ -1,5 +1,22 @@
 # CHANGELOG
 
+# Unreleased
+
+- Fixed `logtostdout` stalling a device: a line longer than 64 KiB, common
+  on firmware setup screens which draw with cursor movement, stopped the
+  logging goroutine, which then blocked every SSH session on that device.
+  Logging now never blocks a device's sessions, dropping output (and saying
+  so) when standard output falls behind.
+- `logtostdout` lines now end at any of `\n`, `\r`, or `\r\n`, are split
+  past 4096 bytes, and are logged after a second of idle output so a prompt
+  with no line ending still appears. Control characters, backslashes, and
+  bytes which are not valid UTF-8 are escaped as `\xNN` or `\\`.
+- `logtostdout` lines are always prefixed with the device name, even when
+  only one device logs, and consrv's own log messages are prefixed with
+  `consrv> `, matching what it prints to SSH sessions.
+- Fixed device output being truncated for a client reading with a buffer
+  smaller than one read from the device.
+
 # v1.3.0
 August 31, 2026
 

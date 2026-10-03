@@ -16,7 +16,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"flag"
 	"fmt"
@@ -26,7 +25,6 @@ import (
 	"net/http/pprof"
 	"os"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/mdlayher/metricslite"
@@ -63,7 +61,7 @@ func main() {
 		"host_key",
 	}
 
-	ll := log.New(os.Stderr, "", log.LstdFlags)
+	ll := log.New(os.Stderr, "consrv> ", log.LstdFlags|log.Lmsgprefix)
 
 	var cfg *config
 	for _, cfgFile := range cfgFilePaths {
@@ -120,13 +118,7 @@ func main() {
 		ll.Fatalf("failed to open filesystem: %v", err)
 	}
 
-	numLogToStdout := 0
-	for _, d := range cfg.Devices {
-		if d.LogToStdout {
-			numLogToStdout++
-		}
-	}
-	var stdoutMu sync.Mutex
+	stdout := &lockedWriter{w: os.Stdout}
 
 	for _, d := range cfg.Devices {
 		dev, err := fs.openSerial(&d, mm.deviceReadBytes, mm.deviceWriteBytes)
@@ -140,24 +132,7 @@ func main() {
 		devices[d.Name] = mux
 		mm.deviceInfo(1.0, d.Name, d.Device, d.Serial, strconv.Itoa(d.Baud))
 		if d.LogToStdout {
-			var prefix string
-			if numLogToStdout > 1 {
-				// Disambiguate log messages when multiple devices are copied to
-				// stdout.
-				prefix = fmt.Sprintf("%s: ", d.Name)
-			}
-			rawReader := mux.m.Attach(context.Background())
-			go func() {
-				scanner := bufio.NewScanner(rawReader)
-				for scanner.Scan() {
-					stdoutMu.Lock()
-					fmt.Println(prefix + scanner.Text())
-					stdoutMu.Unlock()
-				}
-				if err := scanner.Err(); err != nil {
-					ll.Printf("copying serial to stdout: %v", err)
-				}
-			}()
+			go logDevice(mux.m.Attach(context.Background()), stdout, d.Name, ll)
 		}
 	}
 

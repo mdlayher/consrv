@@ -136,17 +136,39 @@ var _ io.Reader = &muxReader{}
 type muxReader struct {
 	ctx   context.Context
 	readC <-chan read
+
+	// pending and err hold the remainder of a read which did not fit in the
+	// caller's buffer, returned by the following calls to Read.
+	pending []byte
+	err     error
 }
 
 // Read implements io.Reader.
 func (mr *muxReader) Read(b []byte) (int, error) {
+	if len(mr.pending) > 0 {
+		n := copy(b, mr.pending)
+		mr.pending = mr.pending[n:]
+		if len(mr.pending) > 0 {
+			return n, nil
+		}
+
+		err := mr.err
+		mr.err = nil
+		return n, err
+	}
+
 	select {
 	case <-mr.ctx.Done():
 		// Nothing to do, EOF.
 		return 0, io.EOF
 	case r := <-mr.readC:
-		// Return any read data and errors.
+		// Return any read data and errors, keeping whatever does not fit in b.
 		n := copy(b, r.b)
+		if n < len(r.b) {
+			mr.pending, mr.err = r.b[n:], r.err
+			return n, nil
+		}
+
 		return n, r.err
 	}
 }
